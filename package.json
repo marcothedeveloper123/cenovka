@@ -1,0 +1,25 @@
+{
+  "name": "prices",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Czech grocery price tracker",
+  "scripts": {
+    "scrape:tesco": "tsx src/scrapers/tesco.ts",
+    "scrape:rohlik": "tsx src/scrapers/rohlik.ts",
+    "scrape:kosik": "tsx src/scrapers/kosik.ts",
+    "scrape:all": "tsx src/run.ts",
+    "smoke": "tsx src/run.ts --limit 20",
+    "assemble": "tsx src/assemble.ts",
+    "report": "tsx src/report.ts"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
