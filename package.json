@@ -19,7 +19,9 @@
     "search": "tsx src/search.ts",
     "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
   },
-  "dependencies": {},
+  "dependencies": {
+    "playwright": "^1.59.1"
+  },
   "devDependencies": {
     "@types/node": "^22.10.0",
     "tsx": "^4.19.2",

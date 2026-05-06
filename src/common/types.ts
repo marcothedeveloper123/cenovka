@@ -5,7 +5,8 @@ export type Store =
   | 'lidl'
   | 'billa'
   | 'penny'
-  | 'globus';
+  | 'globus'
+  | 'kaufland';
 
 export type Unit = 'g' | 'ml' | 'ks' | 'wash' | 'm' | 'cm';
 

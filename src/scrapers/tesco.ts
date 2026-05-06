@@ -16,7 +16,8 @@ export interface TescoOptions {
 }
 
 export async function scrapeTesco(opts: TescoOptions = {}): Promise<ScrapeResult> {
-  const { limit, concurrency = 6 } = opts;
+  // Tesco's Akamai is sensitive — concurrency above 3 hits 403 rate-limits at scale.
+  const { limit, concurrency = 3 } = opts;
   const startedAt = new Date().toISOString();
   const urls = await collectUrls(limit);
 

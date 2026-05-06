@@ -26,7 +26,7 @@ export async function fetchBuffer(url: string, opts: FetchOpts = {}): Promise<Ar
 }
 
 async function fetchWithRetry(url: string, opts: FetchOpts): Promise<Response> {
-  const { headers, timeoutMs = 20_000, retries = 2 } = opts;
+  const { headers, timeoutMs = 20_000, retries = 4 } = opts;
   let lastErr: unknown;
   for (let attempt = 0; attempt <= retries; attempt++) {
     const controller = new AbortController();
@@ -37,12 +37,15 @@ async function fetchWithRetry(url: string, opts: FetchOpts): Promise<Response> {
         signal: controller.signal,
         redirect: 'follow',
       });
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText} for ${url}`);
+      if (!res.ok) throw new HttpError(res.status, `${res.status} ${res.statusText} for ${url}`);
       return res;
     } catch (err) {
       lastErr = err;
       if (attempt < retries) {
-        const backoffMs = 500 * 2 ** attempt;
+        // Bigger backoff on 403/429 (rate-limited) than on transient errors.
+        const isRateLimit = err instanceof HttpError && (err.status === 403 || err.status === 429);
+        const base = isRateLimit ? 4_000 : 500;
+        const backoffMs = base * 2 ** attempt;
         await sleep(backoffMs);
       }
     } finally {
@@ -50,6 +53,14 @@ async function fetchWithRetry(url: string, opts: FetchOpts): Promise<Response> {
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
+class HttpError extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
 }
 
 export function sleep(ms: number): Promise<void> {

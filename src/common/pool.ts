@@ -24,12 +24,21 @@ export async function mapPool<T, R>(
   return results;
 }
 
-/** Log progress every `everyN` items (and on completion) to stderr with a carriage return. */
+/**
+ * Log progress every `everyN` items (and on completion) to stderr.
+ *
+ * On a TTY: a carriage return so the line redraws in place.
+ * On a pipe/file (e.g. tee'd to a log): a newline per tick so `tail -f`
+ * shows real-time progress instead of one giant blob.
+ */
 export function consoleProgress(label: string, everyN = 250): MapPoolOptions['onProgress'] {
+  const isTty = Boolean((process.stderr as { isTTY?: boolean }).isTTY);
   return (done, total) => {
     if (done % everyN === 0 || done === total) {
-      const line = `[${label}] ${done}/${total}${done === total ? '' : '...'}`;
-      process.stderr.write(done === total ? `${line}\n` : `${line}\r`);
+      const stamp = new Date().toISOString().slice(11, 19); // HH:MM:SS
+      const line = `[${stamp}] [${label}] ${done}/${total}`;
+      if (isTty && done !== total) process.stderr.write(`${line}...\r`);
+      else process.stderr.write(`${line}\n`);
     }
   };
 }
