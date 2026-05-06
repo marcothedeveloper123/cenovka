@@ -2,13 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { fmtCZK } from '../lib/format.ts';
 import { navigate, type Route } from '../lib/route.ts';
 import {
-  applyFilters,
   CANONICAL_CATEGORIES,
+  searchAndDedup,
   STORE_LABELS,
   type Filters,
+  type ResultEntry,
   type SortKey,
 } from '../lib/search.ts';
-import type { Dataset, Product, Store } from '../lib/types.ts';
+import type { Dataset, Store } from '../lib/types.ts';
 
 const PAGE_SIZE = 100;
 
@@ -27,13 +28,11 @@ export function Search({ dataset, route }: Props): React.ReactElement {
     setPageLimit(PAGE_SIZE);
   }, [route]);
 
-  const results = useMemo(() => applyFilters(dataset.products, filters), [dataset.products, filters]);
+  const results = useMemo(
+    () => searchAndDedup(dataset.products, dataset.groups, filters),
+    [dataset.products, dataset.groups, filters],
+  );
   const visible = useMemo(() => results.slice(0, pageLimit), [results, pageLimit]);
-  const groupSize = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const g of dataset.groups) m.set(g.id, g.productKeys.length);
-    return m;
-  }, [dataset.groups]);
 
   const update = (next: Filters) => {
     setFilters(next);
@@ -56,7 +55,7 @@ export function Search({ dataset, route }: Props): React.ReactElement {
       </h1>
 
       <p className="num" style={{ color: 'var(--ink-3)', margin: '0 0 24px' }}>
-        {results.length.toLocaleString('cs')} z {dataset.products.length.toLocaleString('cs')} produktů
+        {results.length.toLocaleString('cs')} unikátních produktů z {dataset.products.length.toLocaleString('cs')} celkem
       </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 32, alignItems: 'start' }}>
@@ -69,8 +68,8 @@ export function Search({ dataset, route }: Props): React.ReactElement {
             </p>
           ) : (
             <ul className="results" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-              {visible.map((p) => (
-                <Row key={p.id} product={p} groupCount={p.groupId ? groupSize.get(p.groupId) ?? 0 : 0} />
+              {visible.map((entry) => (
+                <Row key={entry.rep.id} entry={entry} />
               ))}
             </ul>
           )}
@@ -202,62 +201,95 @@ function SortBar({
   );
 }
 
-function Row({ product, groupCount }: { product: Product; groupCount: number }): React.ReactElement {
-  const hasGroup = groupCount >= 2 && Boolean(product.groupId);
+function Row({ entry }: { entry: ResultEntry }): React.ReactElement {
+  const { rep, alternates, totalGroupSize } = entry;
+  const hasAlternates = alternates.length > 0;
+  const priciest = hasAlternates ? alternates[alternates.length - 1]! : rep;
+  const overpayPct = hasAlternates ? ((priciest.price / rep.price) - 1) * 100 : 0;
   return (
-    <li
-      style={{
-        display: 'grid',
-        gridTemplateColumns: '90px 1fr auto auto auto',
-        alignItems: 'baseline',
-        gap: 16,
-        padding: '14px 0',
-        borderBottom: '1px solid var(--rule)',
-      }}
-    >
-      <span className="meta">{product.storeName}</span>
-      <span>
-        <a
-          href={product.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ borderBottom: '1px solid transparent' }}
-          onMouseEnter={(e) => (e.currentTarget.style.borderBottomColor = 'currentColor')}
-          onMouseLeave={(e) => (e.currentTarget.style.borderBottomColor = 'transparent')}
-        >
-          {product.name}
-        </a>
-        {!product.available && (
-          <span className="meta" style={{ marginLeft: 8, color: 'var(--up)' }}>NEDOSTUPNÉ</span>
-        )}
-      </span>
-      <span className="num" style={{ color: 'var(--ink-3)', fontSize: 13 }}>
-        {product.unitPrice != null && product.unitPriceLabel
-          ? `${fmtCZK(product.unitPrice)} / ${product.unitPriceLabel}`
-          : ''}
-      </span>
-      <span className="num display" style={{ fontSize: 18 }}>
-        {fmtCZK(product.price)}
-      </span>
-      <span style={{ minWidth: 132, textAlign: 'right', fontSize: 13 }}>
-        {hasGroup ? (
+    <li style={{ padding: '14px 0', borderBottom: '1px solid var(--rule)' }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '90px 1fr auto auto auto',
+          alignItems: 'baseline',
+          gap: 16,
+        }}
+      >
+        <span className="meta" style={{ color: hasAlternates ? 'var(--accent)' : undefined }}>
+          {hasAlternates ? `★ ${rep.storeName}` : rep.storeName}
+        </span>
+        <span>
           <a
-            href={`#/c/${product.groupId}`}
-            className="meta"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '4px 8px',
-              border: '1px solid var(--rule-2)',
-              color: 'var(--ink-2)',
-            }}
-            title={`Srovnat napříč ${groupCount} řetězci`}
+            href={rep.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ borderBottom: '1px solid transparent' }}
+            onMouseEnter={(e) => (e.currentTarget.style.borderBottomColor = 'currentColor')}
+            onMouseLeave={(e) => (e.currentTarget.style.borderBottomColor = 'transparent')}
           >
-            ◇ {groupCount} ŘETĚZCŮ →
+            {rep.name}
           </a>
-        ) : null}
-      </span>
+          {!rep.available && (
+            <span className="meta" style={{ marginLeft: 8, color: 'var(--up)' }}>NEDOSTUPNÉ</span>
+          )}
+        </span>
+        <span className="num" style={{ color: 'var(--ink-3)', fontSize: 13 }}>
+          {rep.unitPrice != null && rep.unitPriceLabel
+            ? `${fmtCZK(rep.unitPrice)} / ${rep.unitPriceLabel}`
+            : ''}
+        </span>
+        <span className="num display" style={{ fontSize: 18 }}>
+          {fmtCZK(rep.price)}
+        </span>
+        <span style={{ minWidth: 152, textAlign: 'right', fontSize: 13 }}>
+          {hasAlternates && rep.groupId ? (
+            <a
+              href={`#/c/${rep.groupId}`}
+              className="meta"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 8px',
+                border: '1px solid var(--rule-2)',
+                color: 'var(--ink-2)',
+              }}
+              title={`Porovnat napříč ${totalGroupSize} řetězci`}
+            >
+              +{alternates.length} ŘETĚZC{alternates.length === 1 ? 'EM' : 'I'} → POROVNAT
+            </a>
+          ) : null}
+        </span>
+      </div>
+      {hasAlternates && (
+        <div
+          style={{
+            marginTop: 6,
+            marginLeft: 106,
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 12,
+            fontSize: 12,
+            color: 'var(--ink-3)',
+          }}
+        >
+          {alternates.slice(0, 4).map((alt) => (
+            <span key={alt.id} className="num">
+              <span className="meta" style={{ marginRight: 4 }}>{alt.storeName}</span>
+              {fmtCZK(alt.price)}
+            </span>
+          ))}
+          {alternates.length > 4 && (
+            <span className="num" style={{ color: 'var(--ink-4)' }}>+{alternates.length - 4} dalších</span>
+          )}
+          {overpayPct >= 5 && (
+            <span style={{ color: 'var(--up)', marginLeft: 'auto' }}>
+              nejdražší +{overpayPct.toFixed(0)} %
+            </span>
+          )}
+        </div>
+      )}
     </li>
   );
 }

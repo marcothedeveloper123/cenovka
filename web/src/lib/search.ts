@@ -1,4 +1,4 @@
-import type { Product, Store } from './types.ts';
+import type { MatchGroup, Product, Store } from './types.ts';
 import { normalize } from './format.ts';
 
 export type SortKey =
@@ -18,6 +18,18 @@ export interface Filters {
   sort: SortKey;
 }
 
+export interface ResultEntry {
+  rep: Product;
+  /** Other matching chain members of the same group; cheapest-first, excluding `rep`. */
+  alternates: Product[];
+  /** Total members of the group in the full dataset (before filtering). */
+  totalGroupSize: number;
+}
+
+/** Don't dedup groups bigger than this — they're almost certainly garbage from
+ *  the matcher (e.g., one bucket of all 750 ml wines). */
+const MAX_DEDUPABLE_GROUP_SIZE = 10;
+
 export function emptyFilters(): Filters {
   return {
     q: '',
@@ -34,9 +46,7 @@ export function emptyFilters(): Filters {
 // "máslo" (e.g., "Máslo a tuky") or names contain declined forms ("máslové").
 // Replace with score-weighted matching (name >> brand >> category) + light
 // Czech stemming. See docs/web-design.md "Known issues".
-const TOKEN_FIELDS = ['name', 'brand', 'category'] as const;
-
-export function applyFilters(products: readonly Product[], f: Filters): Product[] {
+function filterProducts(products: readonly Product[], f: Filters): Product[] {
   const tokens = tokenize(f.q);
   let out: Product[] = products.slice();
 
@@ -47,40 +57,81 @@ export function applyFilters(products: readonly Product[], f: Filters): Product[
   if (typeof f.minQty === 'number') out = out.filter((p) => (p.quantity ?? 0) >= f.minQty!);
   if (tokens.length > 0) {
     out = out.filter((p) => {
-      const haystack = TOKEN_FIELDS.map((field) => normalize(String(p[field] ?? ''))).join(' ');
+      const haystack = [p.name, p.brand ?? '', p.category ?? '']
+        .map((s) => normalize(s))
+        .join(' ');
       return tokens.every((t) => haystack.includes(t));
     });
   }
+  return out;
+}
 
-  return sortProducts(out, f.sort);
+/** Filter, dedupe by match-group, sort. The Search page's main entry point. */
+export function searchAndDedup(
+  products: readonly Product[],
+  groups: readonly MatchGroup[],
+  f: Filters,
+): ResultEntry[] {
+  const filtered = filterProducts(products, f);
+  const groupSize = new Map<string, number>();
+  for (const g of groups) groupSize.set(g.id, g.productKeys.length);
+
+  const byGroup = new Map<string, Product[]>();
+  const singletons: Product[] = [];
+  for (const p of filtered) {
+    const total = p.groupId ? groupSize.get(p.groupId) ?? 0 : 0;
+    const dedupable = p.groupId && total >= 2 && total <= MAX_DEDUPABLE_GROUP_SIZE;
+    if (dedupable) {
+      const list = byGroup.get(p.groupId!);
+      if (list) list.push(p);
+      else byGroup.set(p.groupId!, [p]);
+    } else {
+      singletons.push(p);
+    }
+  }
+
+  const entries: ResultEntry[] = [];
+  for (const [gid, members] of byGroup) {
+    const cheapestFirst = members.slice().sort((a, b) => a.price - b.price);
+    entries.push({
+      rep: cheapestFirst[0]!,
+      alternates: cheapestFirst.slice(1),
+      totalGroupSize: groupSize.get(gid) ?? members.length,
+    });
+  }
+  for (const s of singletons) {
+    entries.push({ rep: s, alternates: [], totalGroupSize: 1 });
+  }
+
+  return sortEntries(entries, f.sort);
+}
+
+function sortEntries(entries: ResultEntry[], sort: SortKey): ResultEntry[] {
+  const arr = entries.slice();
+  switch (sort) {
+    case 'unit-asc':
+      arr.sort((a, b) => (a.rep.unitPrice ?? Infinity) - (b.rep.unitPrice ?? Infinity));
+      break;
+    case 'unit-desc':
+      arr.sort((a, b) => (b.rep.unitPrice ?? -Infinity) - (a.rep.unitPrice ?? -Infinity));
+      break;
+    case 'price-asc':
+      arr.sort((a, b) => a.rep.price - b.rep.price);
+      break;
+    case 'price-desc':
+      arr.sort((a, b) => b.rep.price - a.rep.price);
+      break;
+    case 'name':
+      arr.sort((a, b) => a.rep.name.localeCompare(b.rep.name, 'cs'));
+      break;
+  }
+  return arr;
 }
 
 function tokenize(q: string): string[] {
   return normalize(q)
     .split(/\s+/)
     .filter((t) => t.length > 0);
-}
-
-function sortProducts(products: Product[], sort: SortKey): Product[] {
-  const arr = products.slice();
-  switch (sort) {
-    case 'unit-asc':
-      arr.sort((a, b) => (a.unitPrice ?? Infinity) - (b.unitPrice ?? Infinity));
-      break;
-    case 'unit-desc':
-      arr.sort((a, b) => (b.unitPrice ?? -Infinity) - (a.unitPrice ?? -Infinity));
-      break;
-    case 'price-asc':
-      arr.sort((a, b) => a.price - b.price);
-      break;
-    case 'price-desc':
-      arr.sort((a, b) => b.price - a.price);
-      break;
-    case 'name':
-      arr.sort((a, b) => a.name.localeCompare(b.name, 'cs'));
-      break;
-  }
-  return arr;
 }
 
 export const CANONICAL_CATEGORIES: Array<{ id: string; label: string }> = [
