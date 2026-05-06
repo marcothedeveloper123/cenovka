@@ -28,6 +28,12 @@ describe('parseQuantity', () => {
     assert.deepEqual(parseQuantity('Vdolečky 100 kusů'), { unit: 'ks', quantity: 100 });
   });
 
+  test('extracts Czech-specific piece words (kapsle, tablety, sáčků)', () => {
+    assert.deepEqual(parseQuantity('Lungo - 16 kapslí v balení'), { unit: 'ks', quantity: 16 });
+    assert.deepEqual(parseQuantity('Tablety do myčky 30 tablet'), { unit: 'ks', quantity: 30 });
+    assert.deepEqual(parseQuantity('Čaj 20 sáčků'), { unit: 'ks', quantity: 20 });
+  });
+
   test('returns undefined when no quantity present', () => {
     assert.equal(parseQuantity('Alpro Kokosový nápoj'), undefined);
     assert.equal(parseQuantity(''), undefined);

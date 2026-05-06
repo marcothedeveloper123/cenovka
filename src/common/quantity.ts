@@ -1,5 +1,10 @@
 import type { Unit } from './types.ts';
 
+const PIECE_WORDS = ['ks', 'kus', 'kusů', 'kusu', 'kapsle', 'kapslí', 'tablet', 'tablety', 'sáček', 'sáčků', 'sáčku'];
+// Trailing lookahead instead of `\b` because Czech non-ASCII letters (í, ů, č…)
+// don't count as JS regex word characters and break boundary matching.
+const PIECE_RE = new RegExp(`(\\d+(?:[.,]\\d+)?)\\s*(?:${PIECE_WORDS.join('|')})(?=\\s|$|[,.;)])`, 'i');
+
 const UNIT_MAP: Array<[RegExp, Unit, number]> = [
   [/(\d+(?:[.,]\d+)?)\s*kg\b/i, 'g', 1000],
   [/(\d+(?:[.,]\d+)?)\s*dag\b/i, 'g', 10],
@@ -9,7 +14,7 @@ const UNIT_MAP: Array<[RegExp, Unit, number]> = [
   [/(\d+(?:[.,]\d+)?)\s*ml\b/i, 'ml', 1],
   [/(\d+(?:[.,]\d+)?)\s*cm\b/i, 'cm', 1],
   [/(\d+(?:[.,]\d+)?)\s*m\b/i, 'm', 1],
-  [/(\d+(?:[.,]\d+)?)\s*(?:ks|kus|kusů|kusu)\b/i, 'ks', 1],
+  [PIECE_RE, 'ks', 1],
 ];
 
 export interface ParsedQuantity {
