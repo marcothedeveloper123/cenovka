@@ -1,5 +1,5 @@
 import { fetchText } from '../common/fetch.ts';
-import { mapPool } from '../common/pool.ts';
+import { consoleProgress, mapPool } from '../common/pool.ts';
 import { readProductJsonLd } from '../common/product-jsonld.ts';
 import { parseQuantity, type ParsedQuantity } from '../common/quantity.ts';
 import { parseSitemapUrls } from '../common/sitemap.ts';
@@ -25,17 +25,22 @@ export async function scrapeRohlik(opts: RohlikOptions = {}): Promise<ScrapeResu
   const products: Product[] = [];
   const errors: ScrapeResult['errors'] = [];
 
-  await mapPool(urls, concurrency, async (url) => {
-    try {
-      const html = await fetchText(url);
-      const raw = mapPage(html, url);
-      if (!raw) return;
-      const { product } = cleanProduct(raw);
-      if (product) products.push(product);
-    } catch (err) {
-      errors.push({ url, error: err instanceof Error ? err.message : String(err) });
-    }
-  });
+  await mapPool(
+    urls,
+    concurrency,
+    async (url) => {
+      try {
+        const html = await fetchText(url);
+        const raw = mapPage(html, url);
+        if (!raw) return;
+        const { product } = cleanProduct(raw);
+        if (product) products.push(product);
+      } catch (err) {
+        errors.push({ url, error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+    { onProgress: consoleProgress(STORE) },
+  );
 
   return { store: STORE, startedAt, finishedAt: new Date().toISOString(), products, errors };
 }

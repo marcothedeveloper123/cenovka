@@ -1,5 +1,5 @@
 import { fetchJson, fetchText } from '../common/fetch.ts';
-import { mapPool } from '../common/pool.ts';
+import { consoleProgress, mapPool } from '../common/pool.ts';
 import { parseSitemapUrls } from '../common/sitemap.ts';
 import type { Product, ScrapeResult } from '../common/types.ts';
 import { cleanProduct } from '../common/validate.ts';
@@ -25,18 +25,23 @@ export async function scrapeKosik(opts: KosikOptions = {}): Promise<ScrapeResult
   const products: Product[] = [];
   const errors: ScrapeResult['errors'] = [];
 
-  await mapPool(slugs, concurrency, async (slug) => {
-    const url = `https://www.kosik.cz/${slug}`;
-    try {
-      const data = await fetchJson<KosikApiResponse>(`${API}/${slug}`);
-      const raw = mapKosikApi(data, url);
-      if (!raw) return;
-      const { product } = cleanProduct(raw);
-      if (product) products.push(product);
-    } catch (err) {
-      errors.push({ url, error: err instanceof Error ? err.message : String(err) });
-    }
-  });
+  await mapPool(
+    slugs,
+    concurrency,
+    async (slug) => {
+      const url = `https://www.kosik.cz/${slug}`;
+      try {
+        const data = await fetchJson<KosikApiResponse>(`${API}/${slug}`);
+        const raw = mapKosikApi(data, url);
+        if (!raw) return;
+        const { product } = cleanProduct(raw);
+        if (product) products.push(product);
+      } catch (err) {
+        errors.push({ url, error: err instanceof Error ? err.message : String(err) });
+      }
+    },
+    { onProgress: consoleProgress(STORE) },
+  );
 
   return { store: STORE, startedAt, finishedAt: new Date().toISOString(), products, errors };
 }
