@@ -3,6 +3,7 @@ import { fmtCZK } from '../lib/format.ts';
 import { navigate, type Route } from '../lib/route.ts';
 import {
   CANONICAL_CATEGORIES,
+  filterProducts,
   searchAndDedup,
   STORE_LABELS,
   type Filters,
@@ -34,6 +35,23 @@ export function Search({ dataset, route }: Props): React.ReactElement {
   );
   const visible = useMemo(() => results.slice(0, pageLimit), [results, pageLimit]);
 
+  // Faceted counts. Each facet excludes its own filter so the user sees
+  // "how many results if I added this." Categories: filter by everything
+  // except categories. Chains: filter by everything except chains.
+  const categoryCounts = useMemo(() => {
+    const filtered = filterProducts(dataset.products, { ...filters, categories: new Set() });
+    const m = new Map<string, number>();
+    for (const p of filtered) if (p.categoryCanonical) m.set(p.categoryCanonical, (m.get(p.categoryCanonical) ?? 0) + 1);
+    return m;
+  }, [dataset.products, filters]);
+
+  const chainCounts = useMemo(() => {
+    const filtered = filterProducts(dataset.products, { ...filters, stores: new Set() });
+    const m = new Map<Store, number>();
+    for (const p of filtered) m.set(p.store, (m.get(p.store) ?? 0) + 1);
+    return m;
+  }, [dataset.products, filters]);
+
   const update = (next: Filters) => {
     setFilters(next);
     setPageLimit(PAGE_SIZE);
@@ -59,7 +77,13 @@ export function Search({ dataset, route }: Props): React.ReactElement {
       </p>
 
       <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 32, alignItems: 'start' }}>
-        <Sidebar filters={filters} onUpdate={update} onToggle={toggle} />
+        <Sidebar
+          filters={filters}
+          chainCounts={chainCounts}
+          categoryCounts={categoryCounts}
+          onUpdate={update}
+          onToggle={toggle}
+        />
         <div>
           <SortBar sort={filters.sort} onChange={(sort) => update({ ...filters, sort })} count={results.length} />
           {visible.length === 0 ? (
@@ -91,46 +115,61 @@ export function Search({ dataset, route }: Props): React.ReactElement {
 
 function Sidebar({
   filters,
+  chainCounts,
+  categoryCounts,
   onUpdate,
   onToggle,
 }: {
   filters: Filters;
+  chainCounts: Map<Store, number>;
+  categoryCounts: Map<string, number>;
   onUpdate: (f: Filters) => void;
   onToggle: (key: 'stores' | 'categories', value: string) => void;
 }): React.ReactElement {
+  // Show only chains/categories that have at least one match in the current
+  // result set (excluding their own filter). Sort by count desc.
+  const visibleChains = (Object.keys(STORE_LABELS) as Store[])
+    .filter((s) => filters.stores.has(s) || (chainCounts.get(s) ?? 0) > 0)
+    .sort((a, b) => (chainCounts.get(b) ?? 0) - (chainCounts.get(a) ?? 0));
+  const visibleCategories = CANONICAL_CATEGORIES.filter(
+    (c) => filters.categories.has(c.id) || (categoryCounts.get(c.id) ?? 0) > 0,
+  ).sort((a, b) => (categoryCounts.get(b.id) ?? 0) - (categoryCounts.get(a.id) ?? 0));
+
   return (
     <aside style={{ position: 'sticky', top: 80, fontSize: 14 }}>
-      <div className="meta" style={{ marginBottom: 8 }}>ŘETĚZCE</div>
-      <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 24px' }}>
-        {(Object.keys(STORE_LABELS) as Store[]).map((s) => (
-          <li key={s} style={{ padding: '4px 0' }}>
-            <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
+      {visibleChains.length > 0 && (
+        <>
+          <div className="meta" style={{ marginBottom: 8 }}>ŘETĚZCE</div>
+          <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 24px' }}>
+            {visibleChains.map((s) => (
+              <FacetRow
+                key={s}
+                label={STORE_LABELS[s]}
+                count={chainCounts.get(s) ?? 0}
                 checked={filters.stores.has(s)}
-                onChange={() => onToggle('stores', s)}
+                onToggle={() => onToggle('stores', s)}
               />
-              {STORE_LABELS[s]}
-            </label>
-          </li>
-        ))}
-      </ul>
+            ))}
+          </ul>
+        </>
+      )}
 
-      <div className="meta" style={{ marginBottom: 8 }}>KATEGORIE</div>
-      <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 24px' }}>
-        {CANONICAL_CATEGORIES.map((c) => (
-          <li key={c.id} style={{ padding: '4px 0' }}>
-            <label style={{ display: 'flex', gap: 8, alignItems: 'center', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
+      {visibleCategories.length > 0 && (
+        <>
+          <div className="meta" style={{ marginBottom: 8 }}>KATEGORIE</div>
+          <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 24px' }}>
+            {visibleCategories.map((c) => (
+              <FacetRow
+                key={c.id}
+                label={c.label}
+                count={categoryCounts.get(c.id) ?? 0}
                 checked={filters.categories.has(c.id)}
-                onChange={() => onToggle('categories', c.id)}
+                onToggle={() => onToggle('categories', c.id)}
               />
-              {c.label}
-            </label>
-          </li>
-        ))}
-      </ul>
+            ))}
+          </ul>
+        </>
+      )}
 
       <div className="meta" style={{ marginBottom: 8 }}>OSTATNÍ</div>
       <label style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '4px 0', cursor: 'pointer' }}>
@@ -150,6 +189,38 @@ function Sidebar({
         Včetně nedostupných
       </label>
     </aside>
+  );
+}
+
+function FacetRow({
+  label,
+  count,
+  checked,
+  onToggle,
+}: {
+  label: string;
+  count: number;
+  checked: boolean;
+  onToggle: () => void;
+}): React.ReactElement {
+  return (
+    <li style={{ padding: '4px 0' }}>
+      <label
+        style={{
+          display: 'flex',
+          gap: 8,
+          alignItems: 'center',
+          cursor: 'pointer',
+          opacity: count === 0 && !checked ? 0.4 : 1,
+        }}
+      >
+        <input type="checkbox" checked={checked} onChange={onToggle} />
+        <span style={{ flex: 1 }}>{label}</span>
+        <span className="num" style={{ color: 'var(--ink-3)', fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
+          {count.toLocaleString('cs')}
+        </span>
+      </label>
+    </li>
   );
 }
 

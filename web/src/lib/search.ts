@@ -46,7 +46,7 @@ export function emptyFilters(): Filters {
 // "máslo" (e.g., "Máslo a tuky") or names contain declined forms ("máslové").
 // Replace with score-weighted matching (name >> brand >> category) + light
 // Czech stemming. See docs/web-design.md "Known issues".
-function filterProducts(products: readonly Product[], f: Filters): Product[] {
+export function filterProducts(products: readonly Product[], f: Filters): Product[] {
   const tokens = tokenize(f.q);
   let out: Product[] = products.slice();
 
