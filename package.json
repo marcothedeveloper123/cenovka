@@ -11,6 +11,7 @@
     "scrape:billa": "tsx src/scrapers/billa.ts",
     "scrape:penny": "tsx src/scrapers/penny.ts",
     "scrape:globus": "tsx src/scrapers/globus.ts",
+    "scrape:kaufland": "tsx src/scrapers/kaufland.ts",
     "scrape:all": "tsx src/run.ts",
     "smoke": "tsx src/run.ts --limit 20",
     "assemble": "tsx src/assemble.ts",

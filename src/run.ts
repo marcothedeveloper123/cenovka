@@ -4,6 +4,7 @@ import { openProductWriter, type ProductWriter } from './common/product-writer.t
 import type { Product, ScrapeResult, Store } from './common/types.ts';
 import { scrapeBilla } from './scrapers/billa.ts';
 import { scrapeGlobus } from './scrapers/globus.ts';
+import { scrapeKaufland } from './scrapers/kaufland.ts';
 import { scrapeKosik } from './scrapers/kosik.ts';
 import { scrapePenny } from './scrapers/penny.ts';
 import { scrapeRohlik } from './scrapers/rohlik.ts';
@@ -21,6 +22,7 @@ const RUNNERS: Runner[] = [
   { store: 'billa', run: (limit, onProduct) => scrapeBilla({ limit, onProduct }) },
   { store: 'penny', run: (limit, onProduct) => scrapePenny({ limit, onProduct }) },
   { store: 'globus', run: (limit, onProduct) => scrapeGlobus({ limit, onProduct }) },
+  { store: 'kaufland', run: (limit, onProduct) => scrapeKaufland({ limit, onProduct }) },
 ];
 
 const DATA_DIR = 'data';
