@@ -41,11 +41,15 @@ export function emptyFilters(): Filters {
   };
 }
 
-// TODO(search-relevance): substring-everywhere over name+brand+category bleeds —
-// "maslo" returns popcorn/margarine/oil/bread because their categories contain
-// "máslo" (e.g., "Máslo a tuky") or names contain declined forms ("máslové").
-// Replace with score-weighted matching (name >> brand >> category) + light
-// Czech stemming. See docs/web-design.md "Known issues".
+// Match each query token against name + brand only — NOT the chain's category
+// breadcrumb. Tesco categorizes peppers/chilli under "Ovoce a zelenina >
+// Zelenina > Rajčata", so including the category text means "rajcata" matches
+// every pepper. The canonical category is still used as a STRUCTURAL filter
+// (the categories facet) but not for free-text search.
+//
+// TODO(search-relevance, #15): still substring-only — "maslo" matches
+// "máslové" via substring; needs declension-aware stemming + score-weighted
+// ranking (name 10× > brand 3×).
 export function filterProducts(products: readonly Product[], f: Filters): Product[] {
   const tokens = tokenize(f.q);
   let out: Product[] = products.slice();
@@ -57,9 +61,7 @@ export function filterProducts(products: readonly Product[], f: Filters): Produc
   if (typeof f.minQty === 'number') out = out.filter((p) => (p.quantity ?? 0) >= f.minQty!);
   if (tokens.length > 0) {
     out = out.filter((p) => {
-      const haystack = [p.name, p.brand ?? '', p.category ?? '']
-        .map((s) => normalize(s))
-        .join(' ');
+      const haystack = `${normalize(p.name)} ${normalize(p.brand ?? '')}`;
       return tokens.every((t) => haystack.includes(t));
     });
   }
