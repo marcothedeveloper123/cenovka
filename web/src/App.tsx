@@ -7,6 +7,7 @@ import { useCart, useFavorites } from './lib/storage.ts';
 import type { Dataset } from './lib/types.ts';
 import { Compare } from './pages/Compare.tsx';
 import { Home } from './pages/Home.tsx';
+import { ProductDetail } from './pages/Product.tsx';
 import { Search } from './pages/Search.tsx';
 
 export function App(): React.ReactElement {
@@ -51,6 +52,8 @@ export function App(): React.ReactElement {
         scope={scope}
       />
     );
+  } else if (route.path.startsWith('/p/')) {
+    page = <ProductDetail dataset={dataset} productId={decodeURIComponent(route.path.slice(3))} />;
   } else {
     page = (
       <div className="loading">

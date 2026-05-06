@@ -219,14 +219,21 @@ function Row({ entry }: { entry: ResultEntry }): React.ReactElement {
       >
         <div>
           <a
-            href={rep.url}
-            target="_blank"
-            rel="noopener noreferrer"
+            href={`#/p/${rep.id}`}
             style={{ fontSize: 15, fontWeight: 500, borderBottom: '1px solid transparent' }}
             onMouseEnter={(e) => (e.currentTarget.style.borderBottomColor = 'currentColor')}
             onMouseLeave={(e) => (e.currentTarget.style.borderBottomColor = 'transparent')}
           >
             {rep.name}
+          </a>
+          <a
+            href={rep.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ marginLeft: 8, color: 'var(--ink-4)', fontSize: 13 }}
+            title={`Otevřít v ${rep.storeName}`}
+          >
+            ↗
           </a>
           {!rep.available && (
             <span className="meta" style={{ marginLeft: 8, color: 'var(--up)' }}>NEDOSTUPNÉ</span>
