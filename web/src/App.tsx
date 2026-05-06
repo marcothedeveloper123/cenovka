@@ -9,6 +9,7 @@ import type { Dataset } from './lib/types.ts';
 import { About } from './pages/About.tsx';
 import { Cart } from './pages/Cart.tsx';
 import { Compare } from './pages/Compare.tsx';
+import { CompareIndex } from './pages/CompareIndex.tsx';
 import { Data } from './pages/Data.tsx';
 import { Favorites } from './pages/Favorites.tsx';
 import { Home } from './pages/Home.tsx';
@@ -49,6 +50,8 @@ export function App(): React.ReactElement {
     page = <Home dataset={dataset} />;
   } else if (route.path === '/h') {
     page = <Search dataset={dataset} route={route} />;
+  } else if (route.path === '/c') {
+    page = <CompareIndex dataset={dataset} />;
   } else if (route.path.startsWith('/c/')) {
     const scopeParam = route.params.get('scope');
     const scope = scopeParam === 'bucket' || scopeParam === 'category' ? scopeParam : 'group';
