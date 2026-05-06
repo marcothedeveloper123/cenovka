@@ -10,6 +10,7 @@ import {
   type ResultEntry,
   type SortKey,
 } from '../lib/search.ts';
+import { useCart, useFavorites } from '../lib/storage.ts';
 import type { Dataset, Store } from '../lib/types.ts';
 
 const PAGE_SIZE = 100;
@@ -91,11 +92,7 @@ export function Search({ dataset, route }: Props): React.ReactElement {
               Žádné produkty neodpovídají dotazu. Zkus uvolnit filtry.
             </p>
           ) : (
-            <ul className="results" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
-              {visible.map((entry) => (
-                <Row key={entry.rep.id} entry={entry} />
-              ))}
-            </ul>
+            <ResultsList entries={visible} />
           )}
           {visible.length < results.length && (
             <button
@@ -272,7 +269,41 @@ function SortBar({
   );
 }
 
-function Row({ entry }: { entry: ResultEntry }): React.ReactElement {
+function ResultsList({ entries }: { entries: ResultEntry[] }): React.ReactElement {
+  const cart = useCart();
+  const favs = useFavorites();
+  return (
+    <ul className="results" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+      {entries.map((entry) => {
+        const key = entry.rep.groupId ?? entry.rep.id;
+        return (
+          <Row
+            key={entry.rep.id}
+            entry={entry}
+            inCart={(cart.items[key] ?? 0) > 0}
+            isStarred={favs.has(key)}
+            onAddToCart={() => cart.add(key)}
+            onToggleStar={() => favs.toggle(key)}
+          />
+        );
+      })}
+    </ul>
+  );
+}
+
+function Row({
+  entry,
+  inCart,
+  isStarred,
+  onAddToCart,
+  onToggleStar,
+}: {
+  entry: ResultEntry;
+  inCart: boolean;
+  isStarred: boolean;
+  onAddToCart: () => void;
+  onToggleStar: () => void;
+}): React.ReactElement {
   const { rep, alternates } = entry;
   const hasAlternates = alternates.length > 0;
   const priciest = hasAlternates ? alternates[alternates.length - 1]! : rep;
@@ -289,6 +320,20 @@ function Row({ entry }: { entry: ResultEntry }): React.ReactElement {
         }}
       >
         <div>
+          <button
+            type="button"
+            onClick={onToggleStar}
+            aria-label={isStarred ? 'Odebrat z oblíbených' : 'Přidat do oblíbených'}
+            title={isStarred ? 'Odebrat z oblíbených' : 'Přidat do oblíbených'}
+            style={{
+              color: isStarred ? 'var(--accent)' : 'var(--ink-4)',
+              fontSize: 16,
+              padding: '0 6px 0 0',
+              lineHeight: 1,
+            }}
+          >
+            {isStarred ? '★' : '☆'}
+          </button>
           <a
             href={`#/p/${rep.id}`}
             style={{ fontSize: 15, fontWeight: 500, borderBottom: '1px solid transparent' }}
@@ -330,15 +375,30 @@ function Row({ entry }: { entry: ResultEntry }): React.ReactElement {
             )}
           </div>
         </div>
-        <div style={{ textAlign: 'right' }}>
+        <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
           <div className="num display" style={{ fontSize: 22, lineHeight: 1.2 }}>
             {fmtCZK(rep.price)}
           </div>
           {hasAlternates && (
-            <div className="num" style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 2 }}>
+            <div className="num" style={{ fontSize: 11, color: 'var(--ink-3)' }}>
               až {fmtCZK(priciest.price)} jinde
             </div>
           )}
+          <button
+            type="button"
+            onClick={onAddToCart}
+            className="btn"
+            style={{
+              height: 28,
+              padding: '0 10px',
+              fontSize: 12,
+              borderColor: inCart ? 'var(--accent)' : 'var(--rule-2)',
+              color: inCart ? 'var(--accent)' : 'var(--ink-2)',
+            }}
+            title={inCart ? 'Přidáno (klik = +1)' : 'Do košíku'}
+          >
+            {inCart ? '✓ V košíku' : '+ Do košíku'}
+          </button>
         </div>
       </div>
 

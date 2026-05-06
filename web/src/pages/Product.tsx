@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { fmtCZK } from '../lib/format.ts';
+import { useCart, useFavorites } from '../lib/storage.ts';
 import type { Dataset, Product } from '../lib/types.ts';
 
 interface Props {
@@ -10,6 +11,13 @@ interface Props {
 export function ProductDetail({ dataset, productId }: Props): React.ReactElement {
   const productById = useMemo(() => new Map(dataset.products.map((p) => [p.id, p])), [dataset.products]);
   const product = productById.get(productId);
+
+  const cart = useCart();
+  const favs = useFavorites();
+  const sameProduct = useMemo(() => (product ? sameProductMembers(dataset, product) : []), [dataset, product]);
+  const samePackaging = useMemo(() => (product ? samePackagingMembers(dataset, product, sameProduct) : []), [dataset, product, sameProduct]);
+  const sameBrand = useMemo(() => (product ? sameBrandMembers(dataset, product) : []), [dataset, product]);
+  const cheaperInCategory = useMemo(() => (product ? cheaperInCategoryMembers(dataset, product) : []), [dataset, product]);
 
   if (!product) {
     return (
@@ -23,10 +31,10 @@ export function ProductDetail({ dataset, productId }: Props): React.ReactElement
     );
   }
 
-  const sameProduct = useMemo(() => sameProductMembers(dataset, product), [dataset, product]);
-  const samePackaging = useMemo(() => samePackagingMembers(dataset, product, sameProduct), [dataset, product, sameProduct]);
-  const sameBrand = useMemo(() => sameBrandMembers(dataset, product), [dataset, product]);
-  const cheaperInCategory = useMemo(() => cheaperInCategoryMembers(dataset, product), [dataset, product]);
+  const cartKey = product.groupId ?? product.id;
+  const favKey = product.groupId ?? product.id;
+  const inCart = (cart.items[cartKey] ?? 0) > 0;
+  const isStarred = favs.has(favKey);
 
   const cheapest = sameProduct.length > 0 ? sameProduct[0]! : product;
   const overpayPct = product.price > cheapest.price ? ((product.price / cheapest.price) - 1) * 100 : 0;
@@ -41,8 +49,17 @@ export function ProductDetail({ dataset, productId }: Props): React.ReactElement
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 32, alignItems: 'start' }}>
         <div>
           <div className="meta">{categoryLabel(product.categoryCanonical) ?? 'PRODUKT'}</div>
-          <h1 className="display" style={{ fontSize: 34, lineHeight: 1.15, margin: '4px 0 12px' }}>
-            {product.name}
+          <h1 className="display" style={{ fontSize: 34, lineHeight: 1.15, margin: '4px 0 12px', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button
+              type="button"
+              onClick={() => favs.toggle(favKey)}
+              aria-label={isStarred ? 'Odebrat z oblíbených' : 'Přidat do oblíbených'}
+              title={isStarred ? 'Odebrat z oblíbených' : 'Přidat do oblíbených'}
+              style={{ color: isStarred ? 'var(--accent)' : 'var(--ink-4)', fontSize: 28, lineHeight: 1, padding: 0 }}
+            >
+              {isStarred ? '★' : '☆'}
+            </button>
+            <span style={{ flex: 1 }}>{product.name}</span>
           </h1>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 14, color: 'var(--ink-3)', marginBottom: 24 }}>
             {product.brand && <span><strong style={{ color: 'var(--ink-2)' }}>{product.brand}</strong></span>}
@@ -83,15 +100,25 @@ export function ProductDetail({ dataset, productId }: Props): React.ReactElement
                 </div>
               </div>
             )}
-            <a
-              href={product.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn"
-              style={{ marginLeft: 'auto', height: 44, padding: '0 18px', fontSize: 14 }}
-            >
-              Otevřít v {product.storeName} ↗
-            </a>
+            <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => cart.add(cartKey)}
+                className="btn btn-primary"
+                style={{ height: 44, padding: '0 18px', fontSize: 14 }}
+              >
+                {inCart ? '✓ V košíku (+1)' : '+ Do košíku'}
+              </button>
+              <a
+                href={product.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn"
+                style={{ height: 44, padding: '0 18px', fontSize: 14 }}
+              >
+                Otevřít v {product.storeName} ↗
+              </a>
+            </div>
           </div>
 
           {sameProduct.length >= 1 && (

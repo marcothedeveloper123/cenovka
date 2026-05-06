@@ -1,14 +1,20 @@
 import { useEffect, useState } from 'react';
 import { Footer } from './components/Footer.tsx';
 import { Header } from './components/Header.tsx';
+import { TweaksPanel } from './components/TweaksPanel.tsx';
 import { loadDataset } from './lib/data.ts';
-import { useRoute } from './lib/route.ts';
+import { useRoute, useTweaksEnabled } from './lib/route.ts';
 import { useCart, useFavorites } from './lib/storage.ts';
 import type { Dataset } from './lib/types.ts';
+import { About } from './pages/About.tsx';
+import { Cart } from './pages/Cart.tsx';
 import { Compare } from './pages/Compare.tsx';
+import { Data } from './pages/Data.tsx';
+import { Favorites } from './pages/Favorites.tsx';
 import { Home } from './pages/Home.tsx';
 import { ProductDetail } from './pages/Product.tsx';
 import { Search } from './pages/Search.tsx';
+import { Trends } from './pages/Trends.tsx';
 
 export function App(): React.ReactElement {
   const route = useRoute();
@@ -17,6 +23,7 @@ export function App(): React.ReactElement {
 
   const cart = useCart();
   const favs = useFavorites();
+  const tweaksEnabled = useTweaksEnabled();
 
   useEffect(() => {
     loadDataset()
@@ -54,6 +61,16 @@ export function App(): React.ReactElement {
     );
   } else if (route.path.startsWith('/p/')) {
     page = <ProductDetail dataset={dataset} productId={decodeURIComponent(route.path.slice(3))} />;
+  } else if (route.path === '/k') {
+    page = <Cart dataset={dataset} />;
+  } else if (route.path === '/f') {
+    page = <Favorites dataset={dataset} />;
+  } else if (route.path === '/d') {
+    page = <Data dataset={dataset} />;
+  } else if (route.path === '/o') {
+    page = <About dataset={dataset} />;
+  } else if (route.path === '/t') {
+    page = <Trends dataset={dataset} />;
   } else {
     page = (
       <div className="loading">
@@ -73,6 +90,7 @@ export function App(): React.ReactElement {
       <Header active={route.path} cartCount={cart.total} favCount={favs.count} initialQuery={initialQuery} />
       <main style={{ flex: 1 }}>{page}</main>
       <Footer />
+      {tweaksEnabled && dataset && <TweaksPanel dataset={dataset} routePath={route.path} />}
     </div>
   );
 }
