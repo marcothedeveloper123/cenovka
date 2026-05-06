@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { fmtCZK } from '../lib/format.ts';
+import { fmtCZK, nameTokens, sharedTokenCount } from '../lib/format.ts';
 import { navigate } from '../lib/route.ts';
 import type { Dataset, MatchGroup, Product } from '../lib/types.ts';
 
@@ -244,7 +244,8 @@ function BucketView({
       </p>
     );
   }
-  const products = dataset.products
+  const repTokens = nameTokens(rep.name);
+  const ranked = dataset.products
     .filter(
       (p) =>
         p.available &&
@@ -252,9 +253,21 @@ function BucketView({
         p.unit === rep.unit &&
         p.quantity === rep.quantity,
     )
-    .sort((a, b) => a.price - b.price);
+    .map((p) => ({ p, shared: sharedTokenCount(repTokens, nameTokens(p.name)) }))
+    .sort((a, b) => b.shared - a.shared || a.p.price - b.p.price);
 
-  return <BroadList products={products} dataset={dataset} highlightGroup={groupId} sortBy="price" />;
+  const similar = ranked.filter((r) => r.shared >= 1).map((r) => r.p);
+  const rest = ranked.filter((r) => r.shared === 0).map((r) => r.p);
+
+  return (
+    <RankedList
+      similar={similar}
+      rest={rest}
+      dataset={dataset}
+      highlightGroup={groupId}
+      sortLabel="PODOBNÉ NÁZVU + CENA"
+    />
+  );
 }
 
 function CategoryView({
@@ -269,96 +282,131 @@ function CategoryView({
   if (!rep.categoryCanonical) {
     return <p style={{ color: 'var(--ink-3)' }}>Tento produkt nemá kanonickou kategorii.</p>;
   }
-  const products = dataset.products
+  const repTokens = nameTokens(rep.name);
+  const ranked = dataset.products
     .filter((p) => p.available && p.categoryCanonical === rep.categoryCanonical && p.unitPrice != null)
-    .sort((a, b) => (a.unitPrice ?? Infinity) - (b.unitPrice ?? Infinity))
-    .slice(0, 200);
+    .map((p) => ({ p, shared: sharedTokenCount(repTokens, nameTokens(p.name)) }))
+    .sort((a, b) => b.shared - a.shared || (a.p.unitPrice ?? Infinity) - (b.p.unitPrice ?? Infinity));
 
-  return <BroadList products={products} dataset={dataset} highlightGroup={groupId} sortBy="unit" />;
+  const similar = ranked.filter((r) => r.shared >= 1).slice(0, 200).map((r) => r.p);
+  const rest = ranked.filter((r) => r.shared === 0).slice(0, 200).map((r) => r.p);
+
+  return (
+    <RankedList
+      similar={similar}
+      rest={rest}
+      dataset={dataset}
+      highlightGroup={groupId}
+      sortLabel="PODOBNÉ NÁZVU + CZK ZA JEDNOTKU"
+    />
+  );
 }
 
-function BroadList({
-  products,
+function RankedList({
+  similar,
+  rest,
   dataset,
   highlightGroup,
-  sortBy,
+  sortLabel,
 }: {
-  products: Product[];
+  similar: Product[];
+  rest: Product[];
   dataset: Dataset;
   highlightGroup: string;
-  sortBy: 'price' | 'unit';
+  sortLabel: string;
+}): React.ReactElement {
+  return (
+    <>
+      <p className="meta" style={{ marginBottom: 8 }}>
+        ŘAZENO PODLE {sortLabel} · {similar.length} PODOBNÝCH
+        {rest.length > 0 && ` · +${rest.length} OSTATNÍCH V BALENÍ`}
+      </p>
+      {similar.length > 0 ? (
+        <ul style={{ listStyle: 'none', padding: 0, margin: 0, borderTop: '1px solid var(--rule)' }}>
+          {similar.map((p) => (
+            <ProductRow key={p.id} p={p} dataset={dataset} highlightGroup={highlightGroup} />
+          ))}
+        </ul>
+      ) : (
+        <p style={{ color: 'var(--ink-3)' }}>Žádné jasně podobné produkty.</p>
+      )}
+      {rest.length > 0 && (
+        <details style={{ marginTop: 16 }}>
+          <summary
+            className="meta"
+            style={{ cursor: 'pointer', padding: '8px 0', borderBottom: '1px solid var(--rule)' }}
+          >
+            ZOBRAZIT VŠECHNY OSTATNÍ ({rest.length})
+          </summary>
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+            {rest.map((p) => (
+              <ProductRow key={p.id} p={p} dataset={dataset} highlightGroup={highlightGroup} />
+            ))}
+          </ul>
+        </details>
+      )}
+    </>
+  );
+}
+
+function ProductRow({
+  p,
+  dataset,
+  highlightGroup,
+}: {
+  p: Product;
+  dataset: Dataset;
+  highlightGroup: string;
 }): React.ReactElement {
   const groupSizes = useMemo(() => {
     const m = new Map<string, number>();
     for (const g of dataset.groups) m.set(g.id, g.productKeys.length);
     return m;
   }, [dataset.groups]);
-
-  if (products.length === 0) {
-    return <p style={{ color: 'var(--ink-3)', padding: '24px 0' }}>Žádné produkty.</p>;
-  }
-
+  const isHighlight = p.groupId === highlightGroup;
+  const groupSize = p.groupId ? groupSizes.get(p.groupId) ?? 1 : 1;
   return (
-    <>
-      <p className="meta" style={{ marginBottom: 8 }}>
-        ŘAZENO PODLE {sortBy === 'unit' ? 'CENY ZA JEDNOTKU' : 'CELKOVÉ CENY'} · {products.length} POLOŽEK
-      </p>
-      <ul style={{ listStyle: 'none', padding: 0, margin: 0, borderTop: '1px solid var(--rule)' }}>
-        {products.map((p) => {
-          const isHighlight = p.groupId === highlightGroup;
-          const groupSize = p.groupId ? groupSizes.get(p.groupId) ?? 1 : 1;
-          return (
-            <li
-              key={p.id}
-              style={{
-                padding: '12px 0',
-                borderBottom: '1px solid var(--rule)',
-                background: isHighlight ? 'var(--accent-soft)' : undefined,
-                display: 'grid',
-                gridTemplateColumns: '1fr auto auto auto',
-                gap: 16,
-                alignItems: 'baseline',
-              }}
-            >
-              <div>
-                <a
-                  href={p.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ fontSize: 14, fontWeight: 500 }}
-                >
-                  {p.name}
-                </a>
-                <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }}>
-                  <strong>{p.storeName}</strong>
-                  {p.brand && p.brand !== p.storeName && <> · {p.brand}</>}
-                  {p.unit && p.quantity != null && <> · {p.quantity} {p.unit}</>}
-                  {groupSize > 1 && p.groupId && (
-                    <>
-                      {' '}·{' '}
-                      <a href={`#/c/${p.groupId}`} style={{ color: 'var(--accent)', borderBottom: '1px dotted var(--accent)' }}>
-                        +{groupSize - 1} dalších
-                      </a>
-                    </>
-                  )}
-                </div>
-              </div>
-              <span className="num display" style={{ fontSize: 18 }}>
-                {fmtCZK(p.price)}
-              </span>
-              <span className="num" style={{ color: 'var(--ink-3)', fontSize: 13, minWidth: 110, textAlign: 'right' }}>
-                {p.unitPrice != null && p.unitPriceLabel
-                  ? `${fmtCZK(p.unitPrice)} / ${p.unitPriceLabel}`
-                  : '—'}
-              </span>
-              <span style={{ minWidth: 24, textAlign: 'right', color: 'var(--accent)', fontWeight: 600 }}>
-                {isHighlight ? '★' : ''}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-    </>
+    <li
+      style={{
+        padding: '12px 0',
+        borderBottom: '1px solid var(--rule)',
+        background: isHighlight ? 'var(--accent-soft)' : undefined,
+        display: 'grid',
+        gridTemplateColumns: '1fr auto auto auto',
+        gap: 16,
+        alignItems: 'baseline',
+      }}
+    >
+      <div>
+        <a href={`#/p/${p.id}`} style={{ fontSize: 14, fontWeight: 500 }}>
+          {p.name}
+        </a>
+        <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 2 }}>
+          <strong>{p.storeName}</strong>
+          {p.brand && p.brand !== p.storeName && <> · {p.brand}</>}
+          {p.unit && p.quantity != null && <> · {p.quantity} {p.unit}</>}
+          {groupSize > 1 && p.groupId && (
+            <>
+              {' '}·{' '}
+              <a href={`#/c/${p.groupId}`} style={{ color: 'var(--accent)', borderBottom: '1px dotted var(--accent)' }}>
+                +{groupSize - 1} dalších
+              </a>
+            </>
+          )}
+        </div>
+      </div>
+      <span className="num display" style={{ fontSize: 18 }}>
+        {fmtCZK(p.price)}
+      </span>
+      <span className="num" style={{ color: 'var(--ink-3)', fontSize: 13, minWidth: 110, textAlign: 'right' }}>
+        {p.unitPrice != null && p.unitPriceLabel
+          ? `${fmtCZK(p.unitPrice)} / ${p.unitPriceLabel}`
+          : '—'}
+      </span>
+      <span style={{ minWidth: 24, textAlign: 'right', color: 'var(--accent)', fontWeight: 600 }}>
+        {isHighlight ? '★' : ''}
+      </span>
+    </li>
   );
 }
 
