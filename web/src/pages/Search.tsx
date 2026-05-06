@@ -304,8 +304,11 @@ function Row({
   onAddToCart: () => void;
   onToggleStar: () => void;
 }): React.ReactElement {
-  const { rep, alternates } = entry;
+  const { rep, alternates, totalGroupSize } = entry;
   const hasAlternates = alternates.length > 0;
+  // "Broad" group: this row is one chain's representative inside a big match
+  // group. No alternates here, but the Porovnat link still works.
+  const isBroadGroupRow = !hasAlternates && rep.groupId != null && totalGroupSize > 1;
   const priciest = hasAlternates ? alternates[alternates.length - 1]! : rep;
   const overpayPct = hasAlternates ? ((priciest.price / rep.price) - 1) * 100 : 0;
   const savedKc = hasAlternates ? priciest.price - rep.price : 0;
@@ -442,6 +445,27 @@ function Row({
             {alternates.length > 4 && (
               <span style={{ color: 'var(--ink-4)' }}>+{alternates.length - 4}</span>
             )}
+          </span>
+        </div>
+      ) : isBroadGroupRow ? (
+        <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <a
+            href={`#/c/${rep.groupId}`}
+            className="btn"
+            style={{
+              height: 32,
+              padding: '0 12px',
+              fontSize: 12,
+              fontWeight: 500,
+              borderColor: 'var(--accent)',
+              color: 'var(--accent)',
+              background: 'var(--accent-soft)',
+            }}
+          >
+            Porovnat všech {totalGroupSize} balení →
+          </a>
+          <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>
+            široký match — různé varianty produktu
           </span>
         </div>
       ) : rep.categoryCanonical && rep.unit && rep.quantity != null ? (

@@ -26,9 +26,13 @@ export interface ResultEntry {
   totalGroupSize: number;
 }
 
-/** Don't dedup groups bigger than this — they're almost certainly garbage from
- *  the matcher (e.g., one bucket of all 750 ml wines). */
-const MAX_DEDUPABLE_GROUP_SIZE = 10;
+/** Tight groups (≤ this) collapse to one row with alternates — the canonical
+ *  "same product across chains" experience. */
+const TIGHT_GROUP_SIZE = 10;
+/** Broad groups (≤ this) collapse to one row PER CHAIN (cheapest in chain).
+ *  The Porovnat button still works — it just points at a noisier group page.
+ *  Above this we give up and let products show as singletons. */
+const BROAD_GROUP_SIZE = 60;
 
 export function emptyFilters(): Filters {
   return {
@@ -82,34 +86,63 @@ export function searchAndDedup(
   const groupSize = new Map<string, number>();
   for (const g of groups) groupSize.set(g.id, g.productKeys.length);
 
-  const byGroup = new Map<string, Product[]>();
+  const tight = new Map<string, Product[]>();
+  const broad = new Map<string, Product[]>();
   const singletons: Product[] = [];
   for (const p of filtered) {
     const total = p.groupId ? groupSize.get(p.groupId) ?? 0 : 0;
-    const dedupable = p.groupId && total >= 2 && total <= MAX_DEDUPABLE_GROUP_SIZE;
-    if (dedupable) {
-      const list = byGroup.get(p.groupId!);
-      if (list) list.push(p);
-      else byGroup.set(p.groupId!, [p]);
+    if (!p.groupId || total < 2) {
+      singletons.push(p);
+    } else if (total <= TIGHT_GROUP_SIZE) {
+      pushInto(tight, p.groupId, p);
+    } else if (total <= BROAD_GROUP_SIZE) {
+      pushInto(broad, p.groupId, p);
     } else {
       singletons.push(p);
     }
   }
 
   const entries: ResultEntry[] = [];
-  for (const [gid, members] of byGroup) {
-    const cheapestFirst = members.slice().sort((a, b) => a.price - b.price);
+
+  // Tight groups: one row, all chain members as alternates.
+  for (const [gid, members] of tight) {
+    const cheapest = members.slice().sort((a, b) => a.price - b.price);
     entries.push({
-      rep: cheapestFirst[0]!,
-      alternates: cheapestFirst.slice(1),
+      rep: cheapest[0]!,
+      alternates: cheapest.slice(1),
       totalGroupSize: groupSize.get(gid) ?? members.length,
     });
   }
+
+  // Broad groups: one row PER CHAIN (cheapest within that chain). Each row
+  // still carries the groupId, so Porovnat lands on the group's compare page.
+  for (const [gid, members] of broad) {
+    const total = groupSize.get(gid) ?? members.length;
+    const byChain = new Map<string, Product>();
+    for (const m of members) {
+      const prev = byChain.get(m.store);
+      if (!prev || m.price < prev.price) byChain.set(m.store, m);
+    }
+    for (const cheapestInChain of byChain.values()) {
+      entries.push({
+        rep: cheapestInChain,
+        alternates: [],
+        totalGroupSize: total,
+      });
+    }
+  }
+
   for (const s of singletons) {
     entries.push({ rep: s, alternates: [], totalGroupSize: 1 });
   }
 
   return sortEntries(entries, f.sort);
+}
+
+function pushInto<K, V>(m: Map<K, V[]>, key: K, value: V): void {
+  const list = m.get(key);
+  if (list) list.push(value);
+  else m.set(key, [value]);
 }
 
 /** Collapse near-duplicate listings within the same chain — same store +
