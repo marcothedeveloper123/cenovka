@@ -29,6 +29,11 @@ export function Search({ dataset, route }: Props): React.ReactElement {
 
   const results = useMemo(() => applyFilters(dataset.products, filters), [dataset.products, filters]);
   const visible = useMemo(() => results.slice(0, pageLimit), [results, pageLimit]);
+  const groupSize = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const g of dataset.groups) m.set(g.id, g.productKeys.length);
+    return m;
+  }, [dataset.groups]);
 
   const update = (next: Filters) => {
     setFilters(next);
@@ -65,7 +70,7 @@ export function Search({ dataset, route }: Props): React.ReactElement {
           ) : (
             <ul className="results" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
               {visible.map((p) => (
-                <Row key={p.id} product={p} />
+                <Row key={p.id} product={p} groupCount={p.groupId ? groupSize.get(p.groupId) ?? 0 : 0} />
               ))}
             </ul>
           )}
@@ -197,12 +202,13 @@ function SortBar({
   );
 }
 
-function Row({ product }: { product: Product }): React.ReactElement {
+function Row({ product, groupCount }: { product: Product; groupCount: number }): React.ReactElement {
+  const hasGroup = groupCount >= 2 && Boolean(product.groupId);
   return (
     <li
       style={{
         display: 'grid',
-        gridTemplateColumns: '90px 1fr auto auto',
+        gridTemplateColumns: '90px 1fr auto auto auto',
         alignItems: 'baseline',
         gap: 16,
         padding: '14px 0',
@@ -232,6 +238,25 @@ function Row({ product }: { product: Product }): React.ReactElement {
       </span>
       <span className="num display" style={{ fontSize: 18 }}>
         {fmtCZK(product.price)}
+      </span>
+      <span style={{ minWidth: 132, textAlign: 'right', fontSize: 13 }}>
+        {hasGroup ? (
+          <a
+            href={`#/c/${product.groupId}`}
+            className="meta"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '4px 8px',
+              border: '1px solid var(--rule-2)',
+              color: 'var(--ink-2)',
+            }}
+            title={`Srovnat napříč ${groupCount} řetězci`}
+          >
+            ◇ {groupCount} ŘETĚZCŮ →
+          </a>
+        ) : null}
       </span>
     </li>
   );
