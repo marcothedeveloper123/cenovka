@@ -6,6 +6,7 @@ import { useRoute } from './lib/route.ts';
 import { useCart, useFavorites } from './lib/storage.ts';
 import type { Dataset } from './lib/types.ts';
 import { Home } from './pages/Home.tsx';
+import { Search } from './pages/Search.tsx';
 
 export function App(): React.ReactElement {
   const route = useRoute();
@@ -37,6 +38,8 @@ export function App(): React.ReactElement {
     page = <div className="loading">Načítám data…</div>;
   } else if (route.path === '/' || route.path === '') {
     page = <Home dataset={dataset} />;
+  } else if (route.path === '/h') {
+    page = <Search dataset={dataset} route={route} />;
   } else {
     page = (
       <div className="loading">
