@@ -42,7 +42,15 @@ export function App(): React.ReactElement {
   } else if (route.path === '/h') {
     page = <Search dataset={dataset} route={route} />;
   } else if (route.path.startsWith('/c/')) {
-    page = <Compare dataset={dataset} groupId={decodeURIComponent(route.path.slice(3))} />;
+    const scopeParam = route.params.get('scope');
+    const scope = scopeParam === 'bucket' || scopeParam === 'category' ? scopeParam : 'group';
+    page = (
+      <Compare
+        dataset={dataset}
+        groupId={decodeURIComponent(route.path.slice(3))}
+        scope={scope}
+      />
+    );
   } else {
     page = (
       <div className="loading">

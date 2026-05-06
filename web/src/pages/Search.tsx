@@ -202,29 +202,27 @@ function SortBar({
 }
 
 function Row({ entry }: { entry: ResultEntry }): React.ReactElement {
-  const { rep, alternates, totalGroupSize } = entry;
+  const { rep, alternates } = entry;
   const hasAlternates = alternates.length > 0;
   const priciest = hasAlternates ? alternates[alternates.length - 1]! : rep;
   const overpayPct = hasAlternates ? ((priciest.price / rep.price) - 1) * 100 : 0;
+  const savedKc = hasAlternates ? priciest.price - rep.price : 0;
   return (
-    <li style={{ padding: '14px 0', borderBottom: '1px solid var(--rule)' }}>
+    <li style={{ padding: '16px 0', borderBottom: '1px solid var(--rule)' }}>
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: '90px 1fr auto auto auto',
-          alignItems: 'baseline',
-          gap: 16,
+          gridTemplateColumns: '1fr auto',
+          gap: 24,
+          alignItems: 'flex-start',
         }}
       >
-        <span className="meta" style={{ color: hasAlternates ? 'var(--accent)' : undefined }}>
-          {hasAlternates ? `★ ${rep.storeName}` : rep.storeName}
-        </span>
-        <span>
+        <div>
           <a
             href={rep.url}
             target="_blank"
             rel="noopener noreferrer"
-            style={{ borderBottom: '1px solid transparent' }}
+            style={{ fontSize: 15, fontWeight: 500, borderBottom: '1px solid transparent' }}
             onMouseEnter={(e) => (e.currentTarget.style.borderBottomColor = 'currentColor')}
             onMouseLeave={(e) => (e.currentTarget.style.borderBottomColor = 'transparent')}
           >
@@ -233,61 +231,80 @@ function Row({ entry }: { entry: ResultEntry }): React.ReactElement {
           {!rep.available && (
             <span className="meta" style={{ marginLeft: 8, color: 'var(--up)' }}>NEDOSTUPNÉ</span>
           )}
-        </span>
-        <span className="num" style={{ color: 'var(--ink-3)', fontSize: 13 }}>
-          {rep.unitPrice != null && rep.unitPriceLabel
-            ? `${fmtCZK(rep.unitPrice)} / ${rep.unitPriceLabel}`
-            : ''}
-        </span>
-        <span className="num display" style={{ fontSize: 18 }}>
-          {fmtCZK(rep.price)}
-        </span>
-        <span style={{ minWidth: 152, textAlign: 'right', fontSize: 13 }}>
-          {hasAlternates && rep.groupId ? (
-            <a
-              href={`#/c/${rep.groupId}`}
-              className="meta"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-                padding: '4px 8px',
-                border: '1px solid var(--rule-2)',
-                color: 'var(--ink-2)',
-              }}
-              title={`Porovnat napříč ${totalGroupSize} řetězci`}
-            >
-              +{alternates.length} ŘETĚZC{alternates.length === 1 ? 'EM' : 'I'} → POROVNAT
-            </a>
-          ) : null}
-        </span>
+          <div
+            style={{
+              marginTop: 6,
+              display: 'flex',
+              gap: 12,
+              fontSize: 13,
+              color: 'var(--ink-3)',
+              flexWrap: 'wrap',
+            }}
+          >
+            <span style={{ color: hasAlternates ? 'var(--accent)' : 'var(--ink-2)' }}>
+              {hasAlternates ? '★ ' : ''}
+              <strong>{rep.storeName}</strong>
+            </span>
+            {rep.unitPrice != null && rep.unitPriceLabel && (
+              <span className="num">
+                {fmtCZK(rep.unitPrice)} / {rep.unitPriceLabel}
+              </span>
+            )}
+          </div>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <div className="num display" style={{ fontSize: 22, lineHeight: 1.2 }}>
+            {fmtCZK(rep.price)}
+          </div>
+          {hasAlternates && (
+            <div className="num" style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 2 }}>
+              až {fmtCZK(priciest.price)} jinde
+            </div>
+          )}
+        </div>
       </div>
-      {hasAlternates && (
+
+      {hasAlternates && rep.groupId && (
         <div
           style={{
-            marginTop: 6,
-            marginLeft: 106,
+            marginTop: 10,
             display: 'flex',
+            alignItems: 'center',
+            gap: 16,
             flexWrap: 'wrap',
-            gap: 12,
-            fontSize: 12,
-            color: 'var(--ink-3)',
           }}
         >
-          {alternates.slice(0, 4).map((alt) => (
-            <span key={alt.id} className="num">
-              <span className="meta" style={{ marginRight: 4 }}>{alt.storeName}</span>
-              {fmtCZK(alt.price)}
-            </span>
-          ))}
-          {alternates.length > 4 && (
-            <span className="num" style={{ color: 'var(--ink-4)' }}>+{alternates.length - 4} dalších</span>
-          )}
+          <a
+            href={`#/c/${rep.groupId}`}
+            className="btn"
+            style={{
+              height: 36,
+              padding: '0 14px',
+              fontSize: 13,
+              fontWeight: 500,
+              borderColor: 'var(--accent)',
+              color: 'var(--accent)',
+              background: 'var(--accent-soft)',
+            }}
+          >
+            Porovnat {alternates.length + 1} řetězců →
+          </a>
           {overpayPct >= 5 && (
-            <span style={{ color: 'var(--up)', marginLeft: 'auto' }}>
-              nejdražší +{overpayPct.toFixed(0)} %
+            <span style={{ fontSize: 13, color: 'var(--ink-2)' }}>
+              ušetři až <strong className="num" style={{ color: 'var(--accent)' }}>{fmtCZK(savedKc, 0)}</strong>
+              {' '}({overpayPct.toFixed(0)} %)
             </span>
           )}
+          <span style={{ display: 'flex', gap: 12, fontSize: 12, color: 'var(--ink-3)', flexWrap: 'wrap' }}>
+            {alternates.slice(0, 4).map((alt) => (
+              <span key={alt.id} className="num">
+                {alt.storeName} <strong>{fmtCZK(alt.price, 0)}</strong>
+              </span>
+            ))}
+            {alternates.length > 4 && (
+              <span style={{ color: 'var(--ink-4)' }}>+{alternates.length - 4}</span>
+            )}
+          </span>
         </div>
       )}
     </li>
