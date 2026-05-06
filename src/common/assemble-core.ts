@@ -8,7 +8,7 @@ import type {
   Store,
 } from './types.ts';
 
-const STORES: Store[] = ['tesco', 'rohlik', 'kosik', 'lidl', 'billa', 'penny'];
+const STORES: Store[] = ['tesco', 'rohlik', 'kosik', 'lidl', 'billa', 'penny', 'globus'];
 
 export interface AssembleResult {
   dataset: CanonicalDataset;

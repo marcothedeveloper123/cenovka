@@ -7,7 +7,7 @@ const DATA_DIR = 'data';
 const RAW_DIR = join(DATA_DIR, 'raw');
 const CANONICAL_DIR = join(DATA_DIR, 'canonical');
 const LATEST_PATH = join(CANONICAL_DIR, 'latest.json');
-const STORES: Store[] = ['tesco', 'rohlik', 'kosik', 'lidl', 'billa', 'penny'];
+const STORES: Store[] = ['tesco', 'rohlik', 'kosik', 'lidl', 'billa', 'penny', 'globus'];
 
 function todayDate(): string {
   return new Date().toISOString().slice(0, 10);

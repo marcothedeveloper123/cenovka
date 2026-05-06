@@ -4,7 +4,8 @@ export type Store =
   | 'kosik'
   | 'lidl'
   | 'billa'
-  | 'penny';
+  | 'penny'
+  | 'globus';
 
 export type Unit = 'g' | 'ml' | 'ks' | 'wash' | 'm' | 'cm';
 

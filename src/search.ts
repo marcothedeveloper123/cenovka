@@ -64,7 +64,7 @@ async function main(): Promise<void> {
 
   console.log(`"${query}" — ${all.length} matches across ${dataset.products.length} products\n`);
 
-  const stores: Store[] = ['tesco', 'rohlik', 'kosik', 'lidl', 'billa', 'penny'];
+  const stores: Store[] = ['tesco', 'rohlik', 'kosik', 'lidl', 'billa', 'penny', 'globus'];
   for (const store of stores) {
     const hits = all.filter((h) => h.product.store === store).slice(0, limit);
     printHits(hits, store);
