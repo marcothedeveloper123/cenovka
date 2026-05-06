@@ -4,7 +4,7 @@ import { chromium, type Page } from 'playwright';
 import { consoleProgress } from '../common/pool.ts';
 import type { Product, ScrapeResult } from '../common/types.ts';
 import { cleanProduct } from '../common/validate.ts';
-import { isChallengeMarkup, safeGoto, solveCloudflareChallenge } from './kaufland-cf.ts';
+import { isChallengeMarkup, KauflandHardBlockError, safeGoto, solveCloudflareChallenge } from './kaufland-cf.ts';
 import { mapKauflandTile, type KauflandTilesResponse } from './kaufland-map.ts';
 
 const ROOT_CATEGORY_URL = 'https://www.kaufland.cz/c/potraviny/~1311/';
@@ -65,6 +65,14 @@ export async function scrapeKaufland(opts: KauflandOptions = {}): Promise<Scrape
     console.error(`[kaufland] ${productIds.length} unique product ids`);
 
     await fetchProductDetails(page, productIds, products, errors, onProduct);
+  } catch (err) {
+    if (err instanceof KauflandHardBlockError) {
+      console.error(`[kaufland] aborting run — ${err.message}`);
+      console.error('[kaufland] this is an IP-level block. options: switch network (VPN / mobile hotspot), or wait 12-48h for Cloudflare rep to decay.');
+      errors.push({ url: err.url, error: `hard-block ${err.rayId ?? ''}`.trim() });
+    } else {
+      throw err;
+    }
   } finally {
     await ctx.close();
   }
@@ -73,7 +81,8 @@ export async function scrapeKaufland(opts: KauflandOptions = {}): Promise<Scrape
 }
 
 async function warmup(page: Page): Promise<void> {
-  await safeGoto(page, 'https://www.kaufland.cz/', { timeout: 60_000 });
+  // First nav of the run — no pre-pause needed.
+  await safeGoto(page, 'https://www.kaufland.cz/', { timeout: 60_000, minPauseMs: 0, maxPauseMs: 0 });
   // Light pause so any post-clearance JS can run before the first scan.
   await page.waitForTimeout(2_000);
 }

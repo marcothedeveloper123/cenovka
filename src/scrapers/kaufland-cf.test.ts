@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { isChallengeMarkup } from './kaufland-cf.ts';
+import { isChallengeMarkup, isHardBlockMarkup } from './kaufland-cf.ts';
 
 describe('isChallengeMarkup', () => {
   it('detects Czech challenge title', () => {
@@ -28,5 +28,23 @@ describe('isChallengeMarkup', () => {
     assert.equal(isChallengeMarkup('Sušenky a sladkosti — Kaufland'), false);
     assert.equal(isChallengeMarkup('Potraviny | Kaufland.cz'), false);
     assert.equal(isChallengeMarkup(''), false);
+  });
+});
+
+describe('isHardBlockMarkup', () => {
+  it('detects the static "Přístup blokován" page', () => {
+    assert.equal(isHardBlockMarkup('Kaufland.cz - Přístup blokován'), true);
+    assert.equal(isHardBlockMarkup('Access Denied'), true);
+  });
+
+  it('does not flag a solvable Turnstile page', () => {
+    // Turnstile pages contain the iframe URL, which we want to handle, not abort on.
+    const turnstile = 'Vyžadováno ověření https://challenges.cloudflare.com/turnstile/...';
+    assert.equal(isHardBlockMarkup(turnstile), false);
+  });
+
+  it('does not flag normal product pages', () => {
+    assert.equal(isHardBlockMarkup('Sušenky a sladkosti — Kaufland'), false);
+    assert.equal(isHardBlockMarkup(''), false);
   });
 });

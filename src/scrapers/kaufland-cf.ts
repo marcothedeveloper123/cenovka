@@ -10,17 +10,48 @@ const CHALLENGE_NEEDLES = [
   'challenges.cloudflare.com',
 ];
 
-/** True if `text` looks like a Cloudflare interstitial (title or HTML body). */
-export function isChallengeMarkup(text: string): boolean {
-  // Diacritic-fold and squash punctuation so "Potvrďte, že jste člověk"
-  // matches the same needle as a un-accented body dump.
-  const folded = text
+const HARD_BLOCK_NEEDLES = [
+  'pristup blokovan',
+  'access denied',
+  // Cloudflare's static block page mentions email-protection link + ray-id
+  // without rendering a turnstile iframe.
+];
+
+/** Thrown when Cloudflare returns a static block page (no Turnstile to solve). */
+export class KauflandHardBlockError extends Error {
+  url: string;
+  rayId?: string;
+  constructor(url: string, rayId?: string) {
+    super(`Kaufland hard-blocked us at ${url}${rayId ? ` (Ray ID ${rayId})` : ''}`);
+    this.name = 'KauflandHardBlockError';
+    this.url = url;
+    this.rayId = rayId;
+  }
+}
+
+function fold(text: string): string {
+  return text
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9. ]+/g, ' ')
     .replace(/\s+/g, ' ');
-  return CHALLENGE_NEEDLES.some((n) => folded.includes(n));
+}
+
+/** True if `text` looks like a Cloudflare interstitial (title or HTML body). */
+export function isChallengeMarkup(text: string): boolean {
+  return CHALLENGE_NEEDLES.some((n) => fold(text).includes(n));
+}
+
+/**
+ * True if `text` looks like a static "you are blocked" page (vs. a solvable
+ * Turnstile challenge). The hard-block page does not contain
+ * "challenges.cloudflare.com", just a Ray ID + IP and a help blurb.
+ */
+export function isHardBlockMarkup(text: string): boolean {
+  const folded = fold(text);
+  if (folded.includes('challenges.cloudflare.com')) return false;
+  return HARD_BLOCK_NEEDLES.some((n) => folded.includes(n));
 }
 
 /** Fast probe: title + presence of a Cloudflare/Turnstile iframe. */
@@ -75,14 +106,50 @@ export async function solveCloudflareChallenge(
   return 'failed';
 }
 
-/** `page.goto` with automatic Cloudflare challenge handling. */
+/**
+ * `page.goto` with: jittered pre-pause (look less robotic),
+ * automatic Cloudflare Turnstile solving, and hard-block detection
+ * (throws `KauflandHardBlockError` so the scraper can abort cleanly).
+ */
 export async function safeGoto(
   page: Page,
   url: string,
-  opts: { waitUntil?: 'load' | 'networkidle' | 'domcontentloaded'; timeout?: number } = {},
+  opts: {
+    waitUntil?: 'load' | 'networkidle' | 'domcontentloaded';
+    timeout?: number;
+    /** Min ms to pause before navigating (default 1500). Set 0 for warmup. */
+    minPauseMs?: number;
+    /** Max ms to pause before navigating (default 3500). */
+    maxPauseMs?: number;
+  } = {},
 ): Promise<void> {
+  const minMs = opts.minPauseMs ?? 1500;
+  const maxMs = opts.maxPauseMs ?? 3500;
+  if (maxMs > 0) {
+    const wait = Math.floor(minMs + Math.random() * Math.max(0, maxMs - minMs));
+    if (wait > 0) await page.waitForTimeout(wait);
+  }
   await page.goto(url, { waitUntil: opts.waitUntil ?? 'load', timeout: opts.timeout ?? 30_000 }).catch(() => undefined);
+  await assertNotHardBlocked(page);
   await solveCloudflareChallenge(page);
+}
+
+async function assertNotHardBlocked(page: Page): Promise<void> {
+  const title = await page.title().catch(() => '');
+  if (!isHardBlockMarkup(title)) return;
+  // Title says "blokován" — confirm there's no turnstile (else it's solvable).
+  const hasTurnstile = await page
+    .locator('iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"]')
+    .count()
+    .then((n) => n > 0)
+    .catch(() => false);
+  if (hasTurnstile) return;
+  const rayId = await page
+    .locator('#rayId, [class*="ray-id"]')
+    .first()
+    .innerText({ timeout: 1_000 })
+    .catch(() => '');
+  throw new KauflandHardBlockError(page.url(), rayId.replace(/^Ray ID:\s*/i, '').trim() || undefined);
 }
 
 async function tryClickTurnstile(page: Page): Promise<void> {
