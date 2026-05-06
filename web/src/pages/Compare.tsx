@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { foldName, stripContainer } from '../lib/fold.ts';
 import { fmtCZK, nameTokens, sharedTokenCount } from '../lib/format.ts';
 import { navigate } from '../lib/route.ts';
 import type { Dataset, MatchGroup, Product } from '../lib/types.ts';
@@ -479,32 +480,3 @@ function dedupeListings(products: readonly Product[]): Product[] {
   return out;
 }
 
-function foldName(name: string): string {
-  return name
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-}
-
-// Czech retail container/packaging words. Stripped before computing the
-// within-chain dedupe key so a bottle and a can of the same product collapse.
-const CONTAINER_TOKENS = new Set([
-  'lahev', 'lahvi', 'lahve', 'flase', 'flaska', 'flasky',
-  'plech', 'plechovka', 'plechovky', 'plechovek',
-  'sklo', 'sklenena', 'skleneny', 'skleny',
-  'pet', 'petka', 'petky',
-  'karton', 'kartony',
-  'tetrapak', 'tetra',
-  'sacek', 'sacku', 'vrecko',
-  'box', 'krabice',
-  'doza', 'kelimek',
-]);
-
-function stripContainer(folded: string): string {
-  return folded
-    .split(' ')
-    .filter((tok) => !CONTAINER_TOKENS.has(tok))
-    .join(' ');
-}

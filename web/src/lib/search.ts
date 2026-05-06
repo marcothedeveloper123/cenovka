@@ -1,4 +1,5 @@
 import type { MatchGroup, Product, Store } from './types.ts';
+import { foldName, stripContainer } from './fold.ts';
 import { normalize } from './format.ts';
 
 export type SortKey =
@@ -114,8 +115,10 @@ export function searchAndDedup(
     });
   }
 
-  // Broad groups: one row PER CHAIN (cheapest within that chain). Each row
-  // still carries the groupId, so Porovnat lands on the group's compare page.
+  // Broad groups: the matcher over-clustered (e.g., all Budvar 500 ml SKUs).
+  // First collapse to one product per chain (cheapest), then sub-group those
+  // by container-stripped name so SAME-named products across chains collapse
+  // to a single row with alternates while DIFFERENT variants stay separate.
   for (const [gid, members] of broad) {
     const total = groupSize.get(gid) ?? members.length;
     const byChain = new Map<string, Product>();
@@ -123,10 +126,16 @@ export function searchAndDedup(
       const prev = byChain.get(m.store);
       if (!prev || m.price < prev.price) byChain.set(m.store, m);
     }
-    for (const cheapestInChain of byChain.values()) {
+    const subByName = new Map<string, Product[]>();
+    for (const m of byChain.values()) {
+      const key = `${stripContainer(foldName(m.name))}|${m.quantity ?? ''}|${m.unit ?? ''}`;
+      pushInto(subByName, key, m);
+    }
+    for (const sub of subByName.values()) {
+      const cheapest = sub.slice().sort((a, b) => a.price - b.price);
       entries.push({
-        rep: cheapestInChain,
-        alternates: [],
+        rep: cheapest[0]!,
+        alternates: cheapest.slice(1),
         totalGroupSize: total,
       });
     }
