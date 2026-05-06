@@ -11,7 +11,9 @@
     "scrape:all": "tsx src/run.ts",
     "smoke": "tsx src/run.ts --limit 20",
     "assemble": "tsx src/assemble.ts",
-    "report": "tsx src/report.ts"
+    "report": "tsx src/report.ts",
+    "search": "tsx src/search.ts",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
   },
   "dependencies": {},
   "devDependencies": {
