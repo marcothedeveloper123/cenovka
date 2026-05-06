@@ -217,10 +217,13 @@ function tokenWeight(weights: Map<string, number>, t: string): number {
  *      drops below threshold because of long descriptive names.
  *   3. AND ≥2 shared tokens (kills 1-token coincidences).
  */
-/** Tokens with weight > this are "distinguishing": they appear in <5%
- *  of the bucket. A token's weight = log(N/freq) + 1, so weight > 4
- *  means freq/N < e^-3 ≈ 0.05. */
-const DISTINGUISHING_WEIGHT = 4;
+/** Tokens with weight > this are "distinguishing". weight = log(N/freq) + 1.
+ *  Weight > 2 means freq/N < e^-1 ≈ 0.37, so any token that's NOT in the
+ *  bulk of the bucket counts as a variant marker. Lowered from 4 (which
+ *  meant <5% — too restrictive) so flavor/variant tokens like "jablko" /
+ *  "Original" / "Nealko" / "Classic" are properly treated as splitters in
+ *  large 100+ member buckets. */
+const DISTINGUISHING_WEIGHT = 2;
 
 function canPairUnion(
   a: CanonicalProduct,
