@@ -72,7 +72,11 @@ export function searchAndDedup(
   groups: readonly MatchGroup[],
   f: Filters,
 ): ResultEntry[] {
-  const filtered = filterProducts(products, f);
+  // Step 1: within-chain dedup. Some chains list the same product under
+  // multiple SKU IDs (e.g., BILLA has two entries for "BILLA Spaghetti
+  // 500g" at the same price). Collapse these to one before anything else.
+  const filtered = collapseWithinChain(filterProducts(products, f));
+
   const groupSize = new Map<string, number>();
   for (const g of groups) groupSize.set(g.id, g.productKeys.length);
 
@@ -104,6 +108,19 @@ export function searchAndDedup(
   }
 
   return sortEntries(entries, f.sort);
+}
+
+/** Collapse near-duplicate listings within the same chain — same store +
+ *  same normalized name + same unit/quantity = same product. Keep the
+ *  cheapest. */
+function collapseWithinChain(products: readonly Product[]): Product[] {
+  const seen = new Map<string, Product>();
+  for (const p of products) {
+    const key = `${p.store}::${normalize(p.name)}::${p.unit ?? ''}::${p.quantity ?? ''}`;
+    const prior = seen.get(key);
+    if (!prior || p.price < prior.price) seen.set(key, p);
+  }
+  return [...seen.values()];
 }
 
 function sortEntries(entries: ResultEntry[], sort: SortKey): ResultEntry[] {

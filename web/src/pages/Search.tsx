@@ -264,7 +264,7 @@ function Row({ entry }: { entry: ResultEntry }): React.ReactElement {
         </div>
       </div>
 
-      {hasAlternates && rep.groupId && (
+      {hasAlternates && rep.groupId ? (
         <div
           style={{
             marginTop: 10,
@@ -306,7 +306,20 @@ function Row({ entry }: { entry: ResultEntry }): React.ReactElement {
             )}
           </span>
         </div>
-      )}
+      ) : rep.categoryCanonical && rep.unit && rep.quantity != null ? (
+        <div style={{ marginTop: 8 }}>
+          <a
+            href={`#/c/p:${encodeURIComponent(rep.id)}?scope=bucket`}
+            style={{
+              fontSize: 12,
+              color: 'var(--ink-3)',
+              borderBottom: '1px dotted var(--ink-4)',
+            }}
+          >
+            Porovnat s podobnými {rep.quantity} {rep.unit} v kategorii →
+          </a>
+        </div>
+      ) : null}
     </li>
   );
 }

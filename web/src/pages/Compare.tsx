@@ -7,38 +7,42 @@ type Scope = 'group' | 'bucket' | 'category';
 
 interface Props {
   dataset: Dataset;
+  /** Either a groupId, or "p:storeId" to compare a singleton by bucket. */
   groupId: string;
   scope: Scope;
 }
 
 export function Compare({ dataset, groupId, scope }: Props): React.ReactElement {
   const productById = useMemo(() => new Map(dataset.products.map((p) => [p.id, p])), [dataset.products]);
-  const group = dataset.groups.find((g) => g.id === groupId);
 
-  if (!group) {
+  const productKey = groupId.startsWith('p:') ? groupId.slice(2) : null;
+  const fromProduct = productKey ? productById.get(productKey) ?? null : null;
+  const group = !productKey ? dataset.groups.find((g) => g.id === groupId) : null;
+  const effectiveScope: Scope = productKey ? (scope === 'group' ? 'bucket' : scope) : scope;
+
+  if (!group && !fromProduct) {
     return (
       <div className="container" style={{ padding: '64px 28px', textAlign: 'center' }}>
-        <div className="meta" style={{ color: 'var(--up)' }}>SKUPINA NENALEZENA</div>
+        <div className="meta" style={{ color: 'var(--up)' }}>NENALEZENO</div>
         <p style={{ color: 'var(--ink-3)', marginTop: 8 }}>
-          Match-skupina <span className="mono">{groupId}</span> neexistuje.{' '}
+          <span className="mono">{groupId}</span> neexistuje.{' '}
           <a href="#/h" style={{ borderBottom: '1px solid currentColor' }}>Zpět na vyhledávání</a>.
         </p>
       </div>
     );
   }
 
-  const groupMembers = useMemo(
-    () =>
-      group.productKeys
-        .map((k) => productById.get(k))
-        .filter((p): p is Product => Boolean(p))
-        .sort((a, b) => a.price - b.price),
-    [group.productKeys, productById],
-  );
+  const groupMembers = useMemo<Product[]>(() => {
+    if (!group) return [];
+    return group.productKeys
+      .map((k) => productById.get(k))
+      .filter((p): p is Product => Boolean(p))
+      .sort((a, b) => a.price - b.price);
+  }, [group, productById]);
 
-  const rep = groupMembers[0];
+  const rep = groupMembers[0] ?? fromProduct;
   if (!rep) {
-    return <div className="container" style={{ padding: 64 }}>Skupina je prázdná.</div>;
+    return <div className="container" style={{ padding: 64 }}>Žádná data.</div>;
   }
 
   const counts = useMemo(() => computeScopeCounts(dataset.products, rep), [dataset.products, rep]);
@@ -47,7 +51,7 @@ export function Compare({ dataset, groupId, scope }: Props): React.ReactElement 
     <div className="container" style={{ padding: '32px 28px 56px' }}>
       <div className="meta" style={{ marginBottom: 8 }}>
         <a href="#/h" style={{ borderBottom: '1px solid currentColor' }}>← výsledky</a>
-        {' · '}skupina <span className="mono">{group.id}</span>
+        {group ? <> {' · '}skupina <span className="mono">{group.id}</span></> : null}
       </div>
 
       <div className="meta">SROVNÁNÍ</div>
@@ -72,14 +76,20 @@ export function Compare({ dataset, groupId, scope }: Props): React.ReactElement 
         )}
       </div>
 
-      <ScopeTabs scope={scope} groupId={group.id} counts={counts} hasBucket={Boolean(rep.categoryCanonical && rep.unit && rep.quantity != null)} />
+      <ScopeTabs
+        scope={effectiveScope}
+        urlKey={group ? group.id : `p:${rep.id}`}
+        counts={counts}
+        hasGroup={Boolean(group && groupMembers.length >= 2)}
+        hasBucket={Boolean(rep.categoryCanonical && rep.unit && rep.quantity != null)}
+      />
 
-      {scope === 'group' && <GroupView members={groupMembers} />}
-      {scope === 'bucket' && (
-        <BucketView dataset={dataset} rep={rep} groupId={group.id} />
+      {effectiveScope === 'group' && group && <GroupView members={groupMembers} />}
+      {effectiveScope === 'bucket' && (
+        <BucketView dataset={dataset} rep={rep} groupId={group?.id ?? ''} />
       )}
-      {scope === 'category' && (
-        <CategoryView dataset={dataset} rep={rep} groupId={group.id} />
+      {effectiveScope === 'category' && (
+        <CategoryView dataset={dataset} rep={rep} groupId={group?.id ?? ''} />
       )}
     </div>
   );
@@ -87,17 +97,19 @@ export function Compare({ dataset, groupId, scope }: Props): React.ReactElement 
 
 function ScopeTabs({
   scope,
-  groupId,
+  urlKey,
   counts,
+  hasGroup,
   hasBucket,
 }: {
   scope: Scope;
-  groupId: string;
+  urlKey: string;
   counts: { group: number; bucket: number; category: number };
+  hasGroup: boolean;
   hasBucket: boolean;
 }): React.ReactElement {
   const tabs: Array<{ id: Scope; label: string; sub: string; count: number; disabled?: boolean }> = [
-    { id: 'group', label: 'Stejný produkt', sub: 'shoda názvu + značky', count: counts.group },
+    { id: 'group', label: 'Stejný produkt', sub: 'shoda názvu + značky', count: counts.group, disabled: !hasGroup },
     { id: 'bucket', label: 'Stejné balení', sub: 'stejná kategorie + velikost', count: counts.bucket, disabled: !hasBucket },
     { id: 'category', label: 'Stejná kategorie', sub: 'libovolná značka i velikost', count: counts.category },
   ];
@@ -118,7 +130,7 @@ function ScopeTabs({
             return;
           }
           e.preventDefault();
-          navigate(`/c/${groupId}`, t.id === 'group' ? {} : { scope: t.id });
+          navigate(`/c/${urlKey}`, t.id === 'group' ? {} : { scope: t.id });
         };
         return (
           <a
