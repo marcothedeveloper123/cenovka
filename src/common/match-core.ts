@@ -14,7 +14,8 @@ const STOPWORDS = new Set([
   'bio', 'eko', 'ml', 'l', 'g', 'kg', 'ks', 'kus',
 ]);
 
-const SIMILARITY_THRESHOLD = 0.4;
+const SIMILARITY_THRESHOLD = 0.55;
+const MIN_SHARED_TOKENS = 2;
 
 /**
  * Group products that look like the same logical item across chains.
@@ -68,17 +69,52 @@ export function jaccard(a: Set<string>, b: Set<string>): number {
 
 function unionByJaccard(
   tokenSets: Set<string>[],
-  _items: CanonicalProduct[],
+  items: CanonicalProduct[],
 ): number[] {
   const parent = tokenSets.map((_, i) => i);
   for (let i = 0; i < tokenSets.length; i++) {
     for (let j = i + 1; j < tokenSets.length; j++) {
-      if (jaccard(tokenSets[i]!, tokenSets[j]!) >= SIMILARITY_THRESHOLD) {
+      if (canUnion(items[i]!, items[j]!, tokenSets[i]!, tokenSets[j]!)) {
         union(parent, i, j);
       }
     }
   }
   return parent;
+}
+
+/**
+ * Two products union into the same logical-product group iff:
+ *   1. Their normalized name+brand tokens share Jaccard ≥ threshold AND ≥2 tokens,
+ *   2. AND if both have a brand, brands must match (case + diacritic insensitive).
+ *
+ * The brand-equality constraint kills the over-clustering we saw with wine,
+ * juice, and other generic-token-heavy categories where many SKUs share
+ * tokens like "víno", "ryzlink", "suché" but are different bottles.
+ */
+function canUnion(
+  a: CanonicalProduct,
+  b: CanonicalProduct,
+  ta: Set<string>,
+  tb: Set<string>,
+): boolean {
+  if (a.brand && b.brand && !brandsEqual(a.brand, b.brand)) return false;
+  const score = jaccard(ta, tb);
+  if (score < SIMILARITY_THRESHOLD) return false;
+  return sharedCount(ta, tb) >= MIN_SHARED_TOKENS;
+}
+
+function brandsEqual(a: string, b: string): boolean {
+  return foldBrand(a) === foldBrand(b);
+}
+
+function foldBrand(s: string): string {
+  return s.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').trim();
+}
+
+function sharedCount(a: Set<string>, b: Set<string>): number {
+  let n = 0;
+  for (const t of a) if (b.has(t)) n += 1;
+  return n;
 }
 
 function find(parent: number[], i: number): number {
