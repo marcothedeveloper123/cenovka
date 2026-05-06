@@ -49,12 +49,14 @@ function mapNode(
   const brand = readBrandName(arr, node.brand);
   const sellUnit = readString(arr, node.sellUnitSizeText);
   const qty = parseQuantity(sellUnit ?? name);
+  const category = categoryFromListingUrl(listingUrl);
 
   return {
     store: 'globus',
     id: vanr,
     name,
     brand,
+    category,
     ean,
     price,
     currency: 'CZK',
@@ -64,6 +66,21 @@ function mapNode(
     url: listingUrl,
     scrapedAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Derive a breadcrumb category from a Globus listing URL like
+ * `/globus/hypermarket/cela-nabidka/mlecne-vyrobky/jogurty` →
+ * "mlecne-vyrobky > jogurty". Skips the "top-produkty" prefix when present.
+ */
+export function categoryFromListingUrl(url: string): string | undefined {
+  const m = /\/cela-nabidka\/([^?#]+)/.exec(url);
+  if (!m) return undefined;
+  const segs = m[1]!
+    .replace(/\/$/, '')
+    .split('/')
+    .filter((s) => s && s !== 'top-produkty');
+  return segs.length > 0 ? segs.join(' > ') : undefined;
 }
 
 function readEan(arr: NuxtArray, ref: unknown): string | undefined {

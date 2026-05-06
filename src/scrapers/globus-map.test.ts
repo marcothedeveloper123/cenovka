@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { describe, test } from 'node:test';
-import { mapGlobusProducts } from './globus-map.ts';
+import { categoryFromListingUrl, mapGlobusProducts } from './globus-map.ts';
 
 function buildPayload(): string {
   // Synthetic Globus product node — values are integer refs into the array.
@@ -76,5 +76,25 @@ describe('mapGlobusProducts', () => {
 
   test('returns empty when no payload', () => {
     assert.deepEqual(mapGlobusProducts('<html></html>', 'https://x'), []);
+  });
+});
+
+describe('categoryFromListingUrl', () => {
+  test('extracts breadcrumb segments after cela-nabidka', () => {
+    assert.equal(
+      categoryFromListingUrl('https://www.globus.cz/globus/hypermarket/cela-nabidka/mlecne-vyrobky/jogurty'),
+      'mlecne-vyrobky > jogurty',
+    );
+  });
+
+  test('skips the "top-produkty" prefix', () => {
+    assert.equal(
+      categoryFromListingUrl('https://www.globus.cz/globus/hypermarket/cela-nabidka/top-produkty/drogerie'),
+      'drogerie',
+    );
+  });
+
+  test('returns undefined for non-listing URLs', () => {
+    assert.equal(categoryFromListingUrl('https://www.globus.cz/'), undefined);
   });
 });
