@@ -33,9 +33,11 @@ Serve those three and we serve everyone else by accident.
 ### Five pillars for v1
 
 #### 1. Search (the front door)
-A single box. Type `máslo`. Rows: name, qty, chain badge, price, CZK/100g, ▾ price-history sparkline, source link. Filters as a sidebar (chain, category, bio, available-only, qty range). Sort default: CZK/100g asc.
+A single box. Type `máslo`. Rows: name, qty, chain badge, price, CZK/100g, ▾ inline price-history bar chart (per HP — denser than a sparkline, readable on mobile), source link. Filters as a sidebar (chain, category, bio, available-only, qty range). Sort default: CZK/100g asc.
 
 URL encodes everything → share = copy URL.
+
+**Advanced query mode** (stolen from HP): a `!` prefix enters AlaSQL-style syntax — `!price < 50 and unit='g' and quantity >= 200 order by numPrices desc`. Power-user feature beloved by journalists; one weekend's work; ships in v1.
 
 #### 2. Cross-chain comparison (the killer feature)
 When a search row belongs to a match group, expand inline to show every chain's price for the *same logical product*. Highlight cheapest. Sortable by chain, CZK/per-unit, % drop today.
@@ -51,6 +53,7 @@ This is what differentiates from Kupi.cz / Akcniceny. The whole project lives or
 - Add products to a personal cart, stored in `localStorage` (no account).
 - Cart total at each chain — "your typical week is 740 Kč at Tesco vs. 698 Kč at Lidl".
 - Cart total over time (sparkline of "your basket inflation").
+- **Per-chain price-sum overlay** (stolen from HP's Diagramme): one chart, one line per chain, x = date, y = "what this exact basket would cost there". Visually argues which chain is cheapest *for your basket*, not in the abstract. Strong storytelling.
 - Cart shareable via URL (state encoded). Friends compare carts.
 
 #### 5. Export (the trust layer)
@@ -65,6 +68,63 @@ This is what differentiates from Kupi.cz / Akcniceny. The whole project lives or
 - Reviews / ratings / community
 - Per-store geo (no data anyway)
 - Mobile app wrapper
+
+---
+
+## Comparison to Heisse-Preise
+
+We're not innovating on UX shape. HP is the model. This is an honest read of where we match, diverge, steal, lag.
+
+### Where we're identical (the load-bearing 80%)
+
+- Search-first interaction. One box, no frame.
+- URL = state. Every search/sort/filter lives in the URL → "easy to share" by construction.
+- `localStorage` carts.
+- JSON/CSV per-result and full-dataset export.
+- Static SPA, no backend at runtime.
+- No accounts, no analytics, privacy-as-absence.
+- Daily-changes view (HP: "Preisänderungen", us: today's movers on home).
+- Per-product price history visualization.
+
+### Where we'd diverge
+
+| | Heisse-Preise | Us |
+|---|---|---|
+| Cross-chain identity | Implicit, via "name-similarity" sort | Explicit match-groups (`/c/:groupId`) as first-class objects |
+| Inflation as a number | Per-cart total over time | Published "basket inflation index" — fixed 100-staples, weighted, single citable number |
+| URL aesthetic | Long query strings (`?f=…&l=…&c=…`) | Five-char paths (`/h?q=…`, `/k`, `/c/:id`) |
+| Czech-aware text | N/A (German doesn't need it) | Diacritic folding + light stemming for declension (`máslo` / `másla`) |
+
+### Stolen from HP into v1
+
+These are HP features that would've been mistakes to omit. Now in the pillars above:
+
+1. **AlaSQL `!` advanced search** — power-user query syntax in pillar 1.
+2. **Inline price-history bar chart** per result row — denser than a sparkline; pillar 1.
+3. **Per-chain price-sum overlay chart** — Diagramme's killer view, pillar 4.
+4. **First-class "show unavailable" toggle** — surfaced as a primary filter, not buried in settings.
+
+### Where we'll be weaker for a while
+
+- **History depth.** HP has 2017→present for Billa/Spar (donated by Dossier and @h43z). We have day 1. Trends, charts, "did mléko really go up" — all need months of accumulation. Only fix is cron + patience.
+- **Maturity.** HP has been hammered by real users since 2023. The mapping between visible affordances and what users click is dialed in. Ours will need iteration.
+
+### Where we could be better
+
+- **Czech market.** They're AT-only. The whole point.
+- **Czech text handling.** We have to do it right; HP didn't have to think about it.
+- **Match groups as artifact.** Small UX upgrade. Better defaults than relying on user-triggered "name-similarity" sort.
+- **Citable inflation index.** A single number for press is something HP doesn't expose cleanly.
+- **Methodology page in plain Czech.** Its own minor artifact for a country that doesn't have one yet.
+
+### Honest read
+
+The differentiators are: country, four small UX upgrades, the inflation number. That's not a moat. The reason to build is "Czech consumers don't have one yet" — sufficient on its own, but worth being clear about so we don't oversell.
+
+The risk-bearing investments are:
+1. **Match quality.** Groups are only useful if they're right.
+2. **Czech text normalization.** Without it, search misses real products.
+3. **Discipline to publish the inflation index reliably.** Becomes the recurring press hook — most of the long-term value comes from journalists citing it.
 
 ### URL structure
 
