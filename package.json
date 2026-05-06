@@ -8,6 +8,8 @@
     "scrape:tesco": "tsx src/scrapers/tesco.ts",
     "scrape:rohlik": "tsx src/scrapers/rohlik.ts",
     "scrape:kosik": "tsx src/scrapers/kosik.ts",
+    "scrape:billa": "tsx src/scrapers/billa.ts",
+    "scrape:penny": "tsx src/scrapers/penny.ts",
     "scrape:all": "tsx src/run.ts",
     "smoke": "tsx src/run.ts --limit 20",
     "assemble": "tsx src/assemble.ts",

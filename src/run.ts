@@ -1,6 +1,8 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { scrapeBilla } from './scrapers/billa.ts';
 import { scrapeKosik } from './scrapers/kosik.ts';
+import { scrapePenny } from './scrapers/penny.ts';
 import { scrapeRohlik } from './scrapers/rohlik.ts';
 import { scrapeTesco } from './scrapers/tesco.ts';
 import type { ScrapeResult, Store } from './common/types.ts';
@@ -14,6 +16,8 @@ const RUNNERS: Runner[] = [
   { store: 'tesco', run: (limit) => scrapeTesco({ limit }) },
   { store: 'rohlik', run: (limit) => scrapeRohlik({ limit }) },
   { store: 'kosik', run: (limit) => scrapeKosik({ limit }) },
+  { store: 'billa', run: (limit) => scrapeBilla({ limit }) },
+  { store: 'penny', run: (limit) => scrapePenny({ limit }) },
 ];
 
 const DATA_DIR = 'data';
