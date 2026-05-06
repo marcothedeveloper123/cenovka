@@ -245,14 +245,16 @@ function BucketView({
     );
   }
   const repTokens = nameTokens(rep.name);
-  const ranked = dataset.products
-    .filter(
+  const candidates = dedupeListings(
+    dataset.products.filter(
       (p) =>
         p.available &&
         p.categoryCanonical === rep.categoryCanonical &&
         p.unit === rep.unit &&
         p.quantity === rep.quantity,
-    )
+    ),
+  );
+  const ranked = candidates
     .map((p) => ({ p, shared: sharedTokenCount(repTokens, nameTokens(p.name)) }))
     .sort((a, b) => b.shared - a.shared || a.p.price - b.p.price);
 
@@ -283,8 +285,12 @@ function CategoryView({
     return <p style={{ color: 'var(--ink-3)' }}>Tento produkt nemá kanonickou kategorii.</p>;
   }
   const repTokens = nameTokens(rep.name);
-  const ranked = dataset.products
-    .filter((p) => p.available && p.categoryCanonical === rep.categoryCanonical && p.unitPrice != null)
+  const candidates = dedupeListings(
+    dataset.products.filter(
+      (p) => p.available && p.categoryCanonical === rep.categoryCanonical && p.unitPrice != null,
+    ),
+  );
+  const ranked = candidates
     .map((p) => ({ p, shared: sharedTokenCount(repTokens, nameTokens(p.name)) }))
     .sort((a, b) => b.shared - a.shared || (a.p.unitPrice ?? Infinity) - (b.p.unitPrice ?? Infinity));
 
@@ -444,3 +450,40 @@ function computeScopeCounts(products: readonly Product[], rep: Product): { group
 
 // Match group import for type help (used implicitly via Dataset.groups).
 type _UnusedMatchGroup = MatchGroup;
+
+/**
+ * Collapse two kinds of duplicate listings:
+ *   1) Cross-chain: products in the same `groupId` → keep cheapest member.
+ *   2) Within-chain: same store + same name + same quantity (different SKU
+ *      IDs that point at effectively the same listing) → keep cheapest.
+ *
+ * Sort by price asc first so "cheapest wins" falls out for free.
+ */
+function dedupeListings(products: readonly Product[]): Product[] {
+  const sorted = [...products].sort((a, b) => a.price - b.price);
+  const seenGroup = new Set<string>();
+  const seenChainKey = new Set<string>();
+  const out: Product[] = [];
+  for (const p of sorted) {
+    if (p.groupId) {
+      if (seenGroup.has(p.groupId)) continue;
+      seenGroup.add(p.groupId);
+    } else {
+      // Within-chain dedupe key: store + folded name + qty/unit.
+      const key = `${p.store}|${foldName(p.name)}|${p.quantity ?? ''}|${p.unit ?? ''}`;
+      if (seenChainKey.has(key)) continue;
+      seenChainKey.add(key);
+    }
+    out.push(p);
+  }
+  return out;
+}
+
+function foldName(name: string): string {
+  return name
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
