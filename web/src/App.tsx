@@ -5,6 +5,7 @@ import { loadDataset } from './lib/data.ts';
 import { useRoute } from './lib/route.ts';
 import { useCart, useFavorites } from './lib/storage.ts';
 import type { Dataset } from './lib/types.ts';
+import { Compare } from './pages/Compare.tsx';
 import { Home } from './pages/Home.tsx';
 import { Search } from './pages/Search.tsx';
 
@@ -40,6 +41,8 @@ export function App(): React.ReactElement {
     page = <Home dataset={dataset} />;
   } else if (route.path === '/h') {
     page = <Search dataset={dataset} route={route} />;
+  } else if (route.path.startsWith('/c/')) {
+    page = <Compare dataset={dataset} groupId={decodeURIComponent(route.path.slice(3))} />;
   } else {
     page = (
       <div className="loading">
