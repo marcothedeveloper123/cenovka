@@ -1,4 +1,5 @@
 import { fetchText } from '../common/fetch.ts';
+import { readBreadcrumb } from '../common/jsonld.ts';
 import { mapPool } from '../common/pool.ts';
 import { readProductJsonLd } from '../common/product-jsonld.ts';
 import { parseQuantity } from '../common/quantity.ts';
@@ -53,11 +54,13 @@ function mapPage(html: string, url: string): Product | null {
   const ld = readProductJsonLd(html);
   if (!ld) return null;
   const qty = parseQuantity(ld.name);
+  const category = readBreadcrumb(html);
   return {
     store: STORE,
     id: ld.sku,
     name: ld.name,
     brand: ld.brand,
+    category,
     ean: ld.ean,
     price: ld.price,
     currency: 'CZK', // Tesco JSON-LD reports GBP but actual prices are CZK

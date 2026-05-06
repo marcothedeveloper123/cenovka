@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { describe, test } from 'node:test';
-import { extractJsonLd, findProduct } from './jsonld.ts';
+import { extractJsonLd, findProduct, readBreadcrumb } from './jsonld.ts';
 
 describe('extractJsonLd', () => {
   test('parses one block', () => {
@@ -37,5 +37,41 @@ describe('findProduct', () => {
     assert.equal(findProduct({ '@type': 'Org' }), null);
     assert.equal(findProduct(null), null);
     assert.equal(findProduct([]), null);
+  });
+});
+
+describe('readBreadcrumb', () => {
+  test('reads breadcrumb names and drops "Home"', () => {
+    const html =
+      '<script type="application/ld+json">' +
+      JSON.stringify({
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { name: 'Home' },
+          { name: 'Drogerie' },
+          { name: 'Péče o ústa' },
+        ],
+      }) +
+      '</script>';
+    assert.equal(readBreadcrumb(html), 'Drogerie > Péče o ústa');
+  });
+
+  test('handles nested item.name shape', () => {
+    const html =
+      '<script type="application/ld+json">' +
+      JSON.stringify({
+        '@graph': [
+          {
+            '@type': 'BreadcrumbList',
+            itemListElement: [{ item: { name: 'A' } }, { item: { name: 'B' } }],
+          },
+        ],
+      }) +
+      '</script>';
+    assert.equal(readBreadcrumb(html), 'A > B');
+  });
+
+  test('returns undefined when none present', () => {
+    assert.equal(readBreadcrumb(''), undefined);
   });
 });
