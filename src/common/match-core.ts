@@ -15,7 +15,15 @@ const STOPWORDS = new Set([
 ]);
 
 const SIMILARITY_THRESHOLD = 0.55;
+const CONTAINMENT_THRESHOLD = 0.8;
 const MIN_SHARED_TOKENS = 2;
+/** Tokens appearing in ≥ this fraction of a bucket are dropped before
+ *  similarity scoring. Kills generic descriptors. The cutoff is small
+ *  because real grocery buckets span many sub-types (a 500g pantry bucket
+ *  has 1300+ items spanning pasta/rice/cereals/etc.), so even 10% is
+ *  enough volume for a token to be "generic". */
+const BUCKET_STOPWORD_FREQ = 0.08;
+const MIN_BUCKET_FOR_IDF = 8;
 
 /**
  * Group products that look like the same logical item across chains.
@@ -72,35 +80,78 @@ function unionByJaccard(
   items: CanonicalProduct[],
 ): number[] {
   const parent = tokenSets.map((_, i) => i);
-  for (let i = 0; i < tokenSets.length; i++) {
-    for (let j = i + 1; j < tokenSets.length; j++) {
-      if (canUnion(items[i]!, items[j]!, tokenSets[i]!, tokenSets[j]!)) {
-        union(parent, i, j);
-      }
+  const rootBrands = new Map<number, Set<string>>();
+  for (let i = 0; i < items.length; i++) {
+    const b = items[i]!.brand;
+    if (b) rootBrands.set(i, new Set([foldBrand(b)]));
+  }
+
+  // Build bucket-local IDF and filter "common" tokens (appearing in ≥40%
+  // of products in this bucket) — generic Czech descriptors like
+  // "testoviny", "semolinove", "susene" dominate raw Jaccard otherwise.
+  const effective = filterBucketStopwords(tokenSets);
+
+  for (let i = 0; i < effective.length; i++) {
+    for (let j = i + 1; j < effective.length; j++) {
+      if (!canPairUnion(items[i]!, items[j]!, effective[i]!, effective[j]!)) continue;
+      const ri = find(parent, i);
+      const rj = find(parent, j);
+      if (ri === rj) continue;
+      const merged = mergedBrands(rootBrands.get(ri), rootBrands.get(rj));
+      if (merged.size > 1) continue;
+      union(parent, i, j);
+      const newRoot = find(parent, i);
+      if (merged.size > 0) rootBrands.set(newRoot, merged);
+      else rootBrands.delete(newRoot);
     }
   }
   return parent;
 }
 
+function filterBucketStopwords(tokenSets: Set<string>[]): Set<string>[] {
+  if (tokenSets.length < MIN_BUCKET_FOR_IDF) return tokenSets;
+  const freq = new Map<string, number>();
+  for (const ts of tokenSets) {
+    for (const t of ts) freq.set(t, (freq.get(t) ?? 0) + 1);
+  }
+  const cutoff = tokenSets.length * BUCKET_STOPWORD_FREQ;
+  return tokenSets.map((ts) => {
+    const out = new Set<string>();
+    for (const t of ts) if ((freq.get(t) ?? 0) < cutoff) out.add(t);
+    return out;
+  });
+}
+
 /**
- * Two products union into the same logical-product group iff:
- *   1. Their normalized name+brand tokens share Jaccard ≥ threshold AND ≥2 tokens,
- *   2. AND if both have a brand, brands must match (case + diacritic insensitive).
- *
- * The brand-equality constraint kills the over-clustering we saw with wine,
- * juice, and other generic-token-heavy categories where many SKUs share
- * tokens like "víno", "ryzlink", "suché" but are different bottles.
+ * Two products may pair iff:
+ *   1. Same brand OR at most one has a brand (no conflict on the pair),
+ *   2. AND token signal is strong: Jaccard ≥ threshold, OR one set is ⊆ the
+ *      other (containment ≥ 0.8) — this catches "RUMMO Spaghetti" ↔
+ *      "Rummo Spaghetti semolinové těstoviny 500g" cases where Jaccard alone
+ *      drops below threshold because of long descriptive names.
+ *   3. AND ≥2 shared tokens (kills 1-token coincidences).
  */
-function canUnion(
+function canPairUnion(
   a: CanonicalProduct,
   b: CanonicalProduct,
   ta: Set<string>,
   tb: Set<string>,
 ): boolean {
   if (a.brand && b.brand && !brandsEqual(a.brand, b.brand)) return false;
+  const shared = sharedCount(ta, tb);
+  if (shared < MIN_SHARED_TOKENS) return false;
   const score = jaccard(ta, tb);
-  if (score < SIMILARITY_THRESHOLD) return false;
-  return sharedCount(ta, tb) >= MIN_SHARED_TOKENS;
+  if (score >= SIMILARITY_THRESHOLD) return true;
+  // Containment fallback: one fully inside the other
+  const cont = Math.max(shared / Math.max(1, ta.size), shared / Math.max(1, tb.size));
+  return cont >= CONTAINMENT_THRESHOLD;
+}
+
+function mergedBrands(a: Set<string> | undefined, b: Set<string> | undefined): Set<string> {
+  const out = new Set<string>();
+  if (a) for (const v of a) out.add(v);
+  if (b) for (const v of b) out.add(v);
+  return out;
 }
 
 function brandsEqual(a: string, b: string): boolean {
