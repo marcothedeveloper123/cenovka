@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { describe, test } from 'node:test';
 import type { Product } from './types.ts';
-import { cleanProduct, cleanString } from './validate.ts';
+import { cleanProduct, cleanString, normalizeEan } from './validate.ts';
 
 const baseProduct: Product = {
   store: 'tesco',
@@ -38,6 +38,26 @@ describe('cleanProduct', () => {
   test('keeps valid EAN', () => {
     const out = cleanProduct({ ...baseProduct, ean: '8720181334740' });
     assert.equal(out.product?.ean, '8720181334740');
+  });
+
+  test('normalizes Tesco-style padded GTIN-14 to canonical EAN-13', () => {
+    // Tesco emits "08593837256846" (14-digit GTIN with leading zero).
+    // Globus emits "8593837256846" (raw 13-digit). Both must canonicalize
+    // to the same string so the matcher / EAN-link logic finds them equal.
+    const tesco = cleanProduct({ ...baseProduct, ean: '08593837256846' });
+    const globus = cleanProduct({ ...baseProduct, ean: '8593837256846' });
+    assert.equal(tesco.product?.ean, globus.product?.ean);
+    assert.equal(tesco.product?.ean, '8593837256846');
+  });
+});
+
+describe('normalizeEan', () => {
+  test('strips leading zeros and re-pads to 13', () => {
+    assert.equal(normalizeEan('08593837256846'), '8593837256846');
+    assert.equal(normalizeEan('8593837256846'), '8593837256846');
+  });
+  test('leaves EAN-8 alone (different scheme, not padded EAN-13)', () => {
+    assert.equal(normalizeEan('40156886'), '40156886');
   });
 
   test('canonicalizes brand alias', () => {

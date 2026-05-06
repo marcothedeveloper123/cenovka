@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { assemble } from './common/assemble-core.ts';
 import type { CanonicalDataset, Product, Store } from './common/types.ts';
+import { cleanProduct } from './common/validate.ts';
 
 const DATA_DIR = 'data';
 const RAW_DIR = join(DATA_DIR, 'raw');
@@ -57,6 +58,22 @@ async function main(): Promise<void> {
 
   const todays = await readRaw(date);
   const prior = await readPriorCanonical();
+
+  // Re-clean all products at the assemble boundary. Scrapers ran cleanProduct()
+  // when they wrote the raw file, but cleanProduct may have been updated since
+  // (e.g., EAN normalization), so old raw rows would otherwise carry the legacy
+  // form into canonical. Re-running here is idempotent for already-clean rows
+  // and applies any new normalization to legacy rows.
+  for (let i = 0; i < todays.length; i++) {
+    const cleaned = cleanProduct(todays[i]!);
+    if (cleaned.product) todays[i] = cleaned.product;
+  }
+  if (prior) {
+    for (let i = 0; i < prior.products.length; i++) {
+      const cleaned = cleanProduct(prior.products[i]!);
+      if (cleaned.product) prior.products[i] = cleaned.product;
+    }
+  }
 
   if (todays.length === 0 && !prior) {
     console.error(`No raw data for ${date} and no prior canonical. Nothing to do.`);

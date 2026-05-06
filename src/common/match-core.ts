@@ -28,24 +28,139 @@ const MIN_BUCKET_FOR_IDF = 8;
  * within each bucket, Jaccard token similarity ≥ threshold unions products.
  */
 export function buildMatchGroups(products: readonly CanonicalProduct[]): MatchGroup[] {
-  const buckets = new Map<string, CanonicalProduct[]>();
+  // Phase 1: cluster by normalized EAN (strongest signal). Tesco + Globus
+  // publish EAN-13 / GTIN-14; validate.normalizeEan() canonicalizes both to
+  // 13 digits so they match exactly. ~7000 cross-chain pairs.
+  //
+  // Phase 2: bucket-by-(category, unit, quantity) + Jaccard for everything
+  // (including EAN-grouped products), then merge any bucket cluster that
+  // overlaps with an existing EAN cluster — pulls in EAN-less Billa/Rohlík
+  // products that share the bucket with EAN'd Tesco/Globus twins.
+  const items: CanonicalProduct[] = [];
   for (const p of products) {
     if (!p.available) continue;
-    const key = bucketKey(p);
+    items.push(p);
+  }
+  const parent = items.map((_, i) => i);
+  const groupBrands = new Map<number, Set<string>>();
+  for (let i = 0; i < items.length; i++) {
+    const b = items[i]!.brand;
+    if (b) groupBrands.set(i, new Set([foldBrand(b)]));
+  }
+
+  unionByEan(items, parent, groupBrands);
+  unionByBuckets(items, parent, groupBrands);
+
+  return materializeGroups(items, parent);
+}
+
+function unionByEan(
+  items: readonly CanonicalProduct[],
+  parent: number[],
+  groupBrands: Map<number, Set<string>>,
+): void {
+  const byEan = new Map<string, number[]>();
+  for (let i = 0; i < items.length; i++) {
+    const ean = items[i]!.ean;
+    if (!ean) continue;
+    let list = byEan.get(ean);
+    if (!list) byEan.set(ean, (list = []));
+    list.push(i);
+  }
+  for (const indices of byEan.values()) {
+    if (indices.length < 2) continue;
+    const seed = indices[0]!;
+    for (let k = 1; k < indices.length; k++) {
+      tryUnion(parent, groupBrands, seed, indices[k]!, /*allowBrandClash=*/false);
+    }
+  }
+}
+
+function unionByBuckets(
+  items: readonly CanonicalProduct[],
+  parent: number[],
+  groupBrands: Map<number, Set<string>>,
+): void {
+  const buckets = new Map<string, number[]>();
+  for (let i = 0; i < items.length; i++) {
+    const key = bucketKey(items[i]!);
     if (!key) continue;
     let list = buckets.get(key);
     if (!list) buckets.set(key, (list = []));
-    list.push(p);
+    list.push(i);
   }
+  for (const [, idxs] of buckets) {
+    if (idxs.length < 2) continue;
+    const tokenSets = idxs.map((i) => tokens(items[i]!.name, items[i]!.brand));
+    const weights = bucketWeights(tokenSets);
+    for (let a = 0; a < idxs.length; a++) {
+      for (let b = a + 1; b < idxs.length; b++) {
+        if (!canPairUnion(items[idxs[a]!]!, items[idxs[b]!]!, tokenSets[a]!, tokenSets[b]!, weights)) continue;
+        tryUnion(parent, groupBrands, idxs[a]!, idxs[b]!, false);
+      }
+    }
+  }
+}
 
-  const groups: MatchGroup[] = [];
-  for (const [key, items] of buckets) {
-    if (items.length < 2) continue;
-    const tokenSets = items.map((p) => tokens(p.name, p.brand));
-    const parent = unionByJaccard(tokenSets, items);
-    appendGroups(groups, key, items, parent);
+function tryUnion(
+  parent: number[],
+  groupBrands: Map<number, Set<string>>,
+  i: number,
+  j: number,
+  allowBrandClash: boolean,
+): void {
+  const ri = find(parent, i);
+  const rj = find(parent, j);
+  if (ri === rj) return;
+  const merged = mergedBrands(groupBrands.get(ri), groupBrands.get(rj));
+  if (!allowBrandClash && merged.size > 1) return;
+  union(parent, i, j);
+  const newRoot = find(parent, i);
+  if (merged.size > 0) groupBrands.set(newRoot, merged);
+  else groupBrands.delete(newRoot);
+}
+
+function materializeGroups(items: readonly CanonicalProduct[], parent: number[]): MatchGroup[] {
+  const clusters = new Map<number, number[]>();
+  for (let i = 0; i < items.length; i++) {
+    const root = find(parent, i);
+    let list = clusters.get(root);
+    if (!list) clusters.set(root, (list = []));
+    list.push(i);
   }
-  return groups;
+  const out: MatchGroup[] = [];
+  for (const [, indices] of clusters) {
+    if (indices.length < 2) continue;
+    const stores = new Set(indices.map((i) => items[i]!.store));
+    if (stores.size < 2) continue;
+    const sample = items[indices[0]!]!;
+    const id = chooseGroupId(items, indices);
+    out.push({
+      id,
+      category: sample.categoryCanonical,
+      unit: sample.unit,
+      quantity: sample.quantity,
+      members: indices.map((i) => {
+        const p = items[i]!;
+        return { store: p.store, id: p.id, name: p.name, price: p.price };
+      }),
+    });
+  }
+  return out;
+}
+
+function chooseGroupId(items: readonly CanonicalProduct[], indices: readonly number[]): string {
+  // Prefer a shared EAN if all EAN'd members agree; else fall back to a
+  // bucket-style key from the first member.
+  const eans = new Set<string>();
+  for (const i of indices) {
+    const e = items[i]!.ean;
+    if (e) eans.add(e);
+  }
+  if (eans.size === 1) return `ean::${[...eans][0]}`;
+  const sample = items[indices[0]!]!;
+  const bucket = bucketKey(sample);
+  return bucket ? `${bucket}::${sample.id}` : `mix::${sample.store}::${sample.id}`;
 }
 
 function bucketKey(p: CanonicalProduct): string | undefined {
@@ -70,35 +185,6 @@ export function jaccard(a: Set<string>, b: Set<string>): number {
   let intersect = 0;
   for (const t of a) if (b.has(t)) intersect += 1;
   return intersect / (a.size + b.size - intersect);
-}
-
-function unionByJaccard(
-  tokenSets: Set<string>[],
-  items: CanonicalProduct[],
-): number[] {
-  const parent = tokenSets.map((_, i) => i);
-  const rootBrands = new Map<number, Set<string>>();
-  for (let i = 0; i < items.length; i++) {
-    const b = items[i]!.brand;
-    if (b) rootBrands.set(i, new Set([foldBrand(b)]));
-  }
-  const weights = bucketWeights(tokenSets);
-
-  for (let i = 0; i < tokenSets.length; i++) {
-    for (let j = i + 1; j < tokenSets.length; j++) {
-      if (!canPairUnion(items[i]!, items[j]!, tokenSets[i]!, tokenSets[j]!, weights)) continue;
-      const ri = find(parent, i);
-      const rj = find(parent, j);
-      if (ri === rj) continue;
-      const merged = mergedBrands(rootBrands.get(ri), rootBrands.get(rj));
-      if (merged.size > 1) continue;
-      union(parent, i, j);
-      const newRoot = find(parent, i);
-      if (merged.size > 0) rootBrands.set(newRoot, merged);
-      else rootBrands.delete(newRoot);
-    }
-  }
-  return parent;
 }
 
 /** Token weights for the bucket: log(N / freq) + 1, with smoothing.
@@ -211,33 +297,3 @@ function union(parent: number[], a: number, b: number): void {
   parent[find(parent, a)] = find(parent, b);
 }
 
-function appendGroups(
-  out: MatchGroup[],
-  bucketKey: string,
-  items: CanonicalProduct[],
-  parent: number[],
-): void {
-  const clusters = new Map<number, number[]>();
-  for (let i = 0; i < items.length; i++) {
-    const root = find(parent, i);
-    let list = clusters.get(root);
-    if (!list) clusters.set(root, (list = []));
-    list.push(i);
-  }
-  for (const [, indices] of clusters) {
-    if (indices.length < 2) continue;
-    const stores = new Set(indices.map((i) => items[i]!.store));
-    if (stores.size < 2) continue; // require cross-chain
-    const sample = items[indices[0]!]!;
-    out.push({
-      id: `${bucketKey}::${sample.id}`,
-      category: sample.categoryCanonical,
-      unit: sample.unit,
-      quantity: sample.quantity,
-      members: indices.map((i) => {
-        const p = items[i]!;
-        return { store: p.store, id: p.id, name: p.name, price: p.price };
-      }),
-    });
-  }
-}

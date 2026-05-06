@@ -42,6 +42,8 @@ export function cleanProduct(raw: Product): ValidationOutcome {
   if (ean !== undefined && !isValidEan(ean)) {
     warnings.push(`invalid EAN: ${ean}`);
     ean = undefined;
+  } else if (ean !== undefined) {
+    ean = normalizeEan(ean);
   }
 
   return {
@@ -75,6 +77,20 @@ function canonicalUrl(url: string): string {
   } catch {
     return url;
   }
+}
+
+/**
+ * Strip leading zeros from a valid EAN/GTIN, then re-pad to 13 digits
+ * (canonical EAN-13 length). This makes a Tesco GTIN-14 like
+ * "08593837256846" equal to a Globus EAN-13 "8593837256846" — same product,
+ * different padding.
+ *
+ * EAN-8 is left alone (it's a separate numbering scheme, not a padded EAN-13).
+ */
+export function normalizeEan(raw: string): string {
+  if (raw.length === 8) return raw;
+  const stripped = raw.replace(/^0+/, '');
+  return stripped.padStart(13, '0');
 }
 
 /** GTIN-13 / EAN-13 / UPC-A / EAN-8 mod-10 check. */
