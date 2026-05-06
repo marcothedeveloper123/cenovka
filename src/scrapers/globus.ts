@@ -15,10 +15,11 @@ const ALLOWED_PATH = /\/globus\/hypermarket\/cela-nabidka\//;
 export interface GlobusOptions {
   limit?: number;
   concurrency?: number;
+  onProduct?: (p: Product) => void;
 }
 
 export async function scrapeGlobus(opts: GlobusOptions = {}): Promise<ScrapeResult> {
-  const { limit, concurrency = 6 } = opts;
+  const { limit, concurrency = 6, onProduct } = opts;
   const startedAt = new Date().toISOString();
 
   const urls = await collectListingUrls(limit);
@@ -37,7 +38,9 @@ export async function scrapeGlobus(opts: GlobusOptions = {}): Promise<ScrapeResu
           if (!product) continue;
           // Dedupe across listings: prefer EAN, fall back to id.
           const key = product.ean ?? `id:${product.id}`;
-          if (!byKey.has(key)) byKey.set(key, product);
+          if (byKey.has(key)) continue;
+          byKey.set(key, product);
+          onProduct?.(product);
         }
       } catch (err) {
         errors.push({ url, error: err instanceof Error ? err.message : String(err) });

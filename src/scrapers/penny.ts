@@ -11,10 +11,11 @@ const STORE = 'penny' as const;
 export interface PennyOptions {
   limit?: number;
   concurrency?: number;
+  onProduct?: (p: Product) => void;
 }
 
 export async function scrapePenny(opts: PennyOptions = {}): Promise<ScrapeResult> {
-  const { limit, concurrency = 6 } = opts;
+  const { limit, concurrency = 6, onProduct } = opts;
   const startedAt = new Date().toISOString();
 
   const xml = await fetchText(SITEMAP);
@@ -33,7 +34,10 @@ export async function scrapePenny(opts: PennyOptions = {}): Promise<ScrapeResult
         const raw = mapReweProduct(html, url, STORE);
         if (!raw) return;
         const { product } = cleanProduct(raw);
-        if (product) products.push(product);
+        if (product) {
+          onProduct?.(product);
+          products.push(product);
+        }
       } catch (err) {
         errors.push({ url, error: err instanceof Error ? err.message : String(err) });
       }

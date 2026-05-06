@@ -1,28 +1,55 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { openProductWriter, type ProductWriter } from './common/product-writer.ts';
+import type { Product, ScrapeResult, Store } from './common/types.ts';
 import { scrapeBilla } from './scrapers/billa.ts';
 import { scrapeGlobus } from './scrapers/globus.ts';
 import { scrapeKosik } from './scrapers/kosik.ts';
 import { scrapePenny } from './scrapers/penny.ts';
 import { scrapeRohlik } from './scrapers/rohlik.ts';
 import { scrapeTesco } from './scrapers/tesco.ts';
-import type { ScrapeResult, Store } from './common/types.ts';
 
 interface Runner {
   store: Store;
-  run: (limit?: number) => Promise<ScrapeResult>;
+  run: (limit: number | undefined, onProduct: (p: Product) => void) => Promise<ScrapeResult>;
 }
 
 const RUNNERS: Runner[] = [
-  { store: 'tesco', run: (limit) => scrapeTesco({ limit }) },
-  { store: 'rohlik', run: (limit) => scrapeRohlik({ limit }) },
-  { store: 'kosik', run: (limit) => scrapeKosik({ limit }) },
-  { store: 'billa', run: (limit) => scrapeBilla({ limit }) },
-  { store: 'penny', run: (limit) => scrapePenny({ limit }) },
-  { store: 'globus', run: (limit) => scrapeGlobus({ limit }) },
+  { store: 'tesco', run: (limit, onProduct) => scrapeTesco({ limit, onProduct }) },
+  { store: 'rohlik', run: (limit, onProduct) => scrapeRohlik({ limit, onProduct }) },
+  { store: 'kosik', run: (limit, onProduct) => scrapeKosik({ limit, onProduct }) },
+  { store: 'billa', run: (limit, onProduct) => scrapeBilla({ limit, onProduct }) },
+  { store: 'penny', run: (limit, onProduct) => scrapePenny({ limit, onProduct }) },
+  { store: 'globus', run: (limit, onProduct) => scrapeGlobus({ limit, onProduct }) },
 ];
 
 const DATA_DIR = 'data';
+
+async function runOne(
+  runner: Runner,
+  limit: number | undefined,
+  date: string,
+): Promise<{ store: Store; result: ScrapeResult; written: number } | null> {
+  const t0 = Date.now();
+  const path = join(DATA_DIR, 'raw', runner.store, `${date}.jsonl`);
+  console.log(`[${runner.store}] starting${limit ? ` (limit ${limit})` : ''} → ${path}`);
+
+  let writer: ProductWriter | null = null;
+  try {
+    writer = await openProductWriter(path);
+    const result = await runner.run(limit, (p) => writer!.write(p));
+    const dt = ((Date.now() - t0) / 1000).toFixed(1);
+    console.log(
+      `[${runner.store}] done in ${dt}s — ${result.products.length} products, ${result.errors.length} errors`,
+    );
+    return { store: runner.store, result, written: writer.count };
+  } catch (err) {
+    console.error(`[${runner.store}] FAILED:`, err);
+    return null;
+  } finally {
+    if (writer) await writer.close();
+  }
+}
 
 async function main(): Promise<void> {
   const limitArg = process.argv.indexOf('--limit');
@@ -38,37 +65,13 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const results = await Promise.all(
-    targets.map(async (r) => {
-      const t0 = Date.now();
-      console.log(`[${r.store}] starting${limit ? ` (limit ${limit})` : ''}`);
-      try {
-        const result = await r.run(limit);
-        const dt = ((Date.now() - t0) / 1000).toFixed(1);
-        console.log(
-          `[${r.store}] done in ${dt}s — ${result.products.length} products, ${result.errors.length} errors`,
-        );
-        return { store: r.store, result };
-      } catch (err) {
-        console.error(`[${r.store}] FAILED:`, err);
-        return null;
-      }
-    }),
-  );
+  const results = await Promise.all(targets.map((r) => runOne(r, limit, date)));
 
   for (const entry of results) {
-    if (!entry) continue;
-    const dir = join(DATA_DIR, 'raw', entry.store);
-    await mkdir(dir, { recursive: true });
-    const path = join(dir, `${date}.jsonl`);
-    const lines = entry.result.products.map((p) => JSON.stringify(p)).join('\n');
-    await writeFile(path, lines + '\n');
-    console.log(`[${entry.store}] wrote ${path}`);
-
-    if (entry.result.errors.length > 0) {
-      const errPath = join(dir, `${date}.errors.json`);
-      await writeFile(errPath, JSON.stringify(entry.result.errors, null, 2));
-    }
+    if (!entry || entry.result.errors.length === 0) continue;
+    const errPath = join(DATA_DIR, 'raw', entry.store, `${date}.errors.json`);
+    await writeFile(errPath, JSON.stringify(entry.result.errors, null, 2));
+    console.log(`[${entry.store}] wrote ${errPath} (${entry.result.errors.length} errors)`);
   }
 }
 

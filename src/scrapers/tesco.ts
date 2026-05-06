@@ -13,11 +13,12 @@ const STORE = 'tesco' as const;
 export interface TescoOptions {
   limit?: number;
   concurrency?: number;
+  onProduct?: (p: Product) => void;
 }
 
 export async function scrapeTesco(opts: TescoOptions = {}): Promise<ScrapeResult> {
   // Tesco's Akamai is sensitive — concurrency above 3 hits 403 rate-limits at scale.
-  const { limit, concurrency = 3 } = opts;
+  const { limit, concurrency = 3, onProduct } = opts;
   const startedAt = new Date().toISOString();
   const urls = await collectUrls(limit);
 
@@ -33,7 +34,10 @@ export async function scrapeTesco(opts: TescoOptions = {}): Promise<ScrapeResult
         const raw = mapPage(html, url);
         if (!raw) return;
         const { product } = cleanProduct(raw);
-        if (product) products.push(product);
+        if (product) {
+          onProduct?.(product);
+          products.push(product);
+        }
       } catch (err) {
         errors.push({ url, error: err instanceof Error ? err.message : String(err) });
       }

@@ -15,10 +15,11 @@ const STORE = 'kosik' as const;
 export interface KosikOptions {
   limit?: number;
   concurrency?: number;
+  onProduct?: (p: Product) => void;
 }
 
 export async function scrapeKosik(opts: KosikOptions = {}): Promise<ScrapeResult> {
-  const { limit, concurrency = 8 } = opts;
+  const { limit, concurrency = 8, onProduct } = opts;
   const startedAt = new Date().toISOString();
   const slugs = await collectSlugs(limit);
 
@@ -35,7 +36,10 @@ export async function scrapeKosik(opts: KosikOptions = {}): Promise<ScrapeResult
         const raw = mapKosikApi(data, url);
         if (!raw) return;
         const { product } = cleanProduct(raw);
-        if (product) products.push(product);
+        if (product) {
+          onProduct?.(product);
+          products.push(product);
+        }
       } catch (err) {
         errors.push({ url, error: err instanceof Error ? err.message : String(err) });
       }
