@@ -4,6 +4,7 @@ import { chromium, type Page } from 'playwright';
 import { consoleProgress } from '../common/pool.ts';
 import type { Product, ScrapeResult } from '../common/types.ts';
 import { cleanProduct } from '../common/validate.ts';
+import { isChallengeMarkup, safeGoto, solveCloudflareChallenge } from './kaufland-cf.ts';
 import { mapKauflandTile, type KauflandTilesResponse } from './kaufland-map.ts';
 
 const ROOT_CATEGORY_URL = 'https://www.kaufland.cz/c/potraviny/~1311/';
@@ -72,17 +73,9 @@ export async function scrapeKaufland(opts: KauflandOptions = {}): Promise<Scrape
 }
 
 async function warmup(page: Page): Promise<void> {
-  await page.goto('https://www.kaufland.cz/', { waitUntil: 'load', timeout: 60_000 });
-  // Cloudflare's challenge token requires real time to compute and submit.
-  // 8s is conservative; on a warmed profile it's overkill but harmless.
-  await page.waitForTimeout(8_000);
-  // If we landed on the block page, wait once more — sometimes CF clears
-  // shortly after with a soft-reload.
-  if ((await page.title()).includes('blokován')) {
-    await page.waitForTimeout(8_000);
-    await page.reload({ waitUntil: 'load' }).catch(() => undefined);
-    await page.waitForTimeout(4_000);
-  }
+  await safeGoto(page, 'https://www.kaufland.cz/', { timeout: 60_000 });
+  // Light pause so any post-clearance JS can run before the first scan.
+  await page.waitForTimeout(2_000);
 }
 
 /**
@@ -131,7 +124,7 @@ async function scanCategory(
   let newSubs: string[] = [];
   for (let pageN = 1; pageN <= 50; pageN++) {
     const target = pageN === 1 ? baseUrl : `${baseUrl}?page=${pageN}`;
-    await page.goto(target, { waitUntil: 'networkidle', timeout: 30_000 }).catch(() => undefined);
+    await safeGoto(page, target, { waitUntil: 'networkidle', timeout: 30_000 });
     const harvest = await page.evaluate(() => {
       const html = document.documentElement.outerHTML;
       const productMatches = html.match(/\/product\/(\d{6,12})\//g) || [];
@@ -164,31 +157,15 @@ async function fetchProductDetails(
   for (let i = 0; i < batches.length; i++) {
     const batch = batches[i]!;
     try {
-      // Use the browser's own fetch so cookies + TLS fingerprint match what
-      // Cloudflare expects from a real session. ctx.request.post() bypasses
-      // the browser stack and gets blocked.
-      const result = await page.evaluate(
-        async ({ url, ids }) => {
-          const res = await fetch(url, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json', accept: 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-              products: ids.map((id: number) => ({ id })),
-              additionalRopdAttributes: [],
-              includeProductConditions: ['new'],
-              includeOptionalData: [],
-              omitSellerCompanyNames: true,
-              includeIneligibleProducts: false,
-              includeSoldOutProducts: false,
-              widgetVersion: '6.6.1',
-            }),
-          });
-          const body = res.ok ? await res.json() : await res.text();
-          return { ok: res.ok, status: res.status, body };
-        },
-        { url: TILES_API, ids: batch },
-      );
+      let result = await callTilesApi(page, batch);
+      if (!result.ok && isChallengeMarkup(String(result.body).slice(0, 4000))) {
+        // Cloudflare interrupted us. Surface a real page in the visible
+        // browser to let the challenge render, solve it, retry once.
+        console.error('[kaufland] tiles fetch hit Cloudflare; triggering visible challenge');
+        await safeGoto(page, `https://www.kaufland.cz/product/${batch[0]}/`, { timeout: 30_000 });
+        await solveCloudflareChallenge(page);
+        result = await callTilesApi(page, batch);
+      }
       if (!result.ok) {
         const err = `${result.status} — ${String(result.body).slice(0, 200)}`;
         errors.push({ url: TILES_API, error: err });
@@ -209,6 +186,36 @@ async function fetchProductDetails(
     }
     onProgress?.(i + 1, batches.length);
   }
+}
+
+interface TilesResult { ok: boolean; status: number; body: unknown }
+
+async function callTilesApi(page: Page, ids: readonly number[]): Promise<TilesResult> {
+  // Use the browser's own fetch so cookies + TLS fingerprint match what
+  // Cloudflare expects from a real session. ctx.request.post() bypasses
+  // the browser stack and gets blocked.
+  return page.evaluate(
+    async ({ url, ids }) => {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', accept: 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          products: ids.map((id: number) => ({ id })),
+          additionalRopdAttributes: [],
+          includeProductConditions: ['new'],
+          includeOptionalData: [],
+          omitSellerCompanyNames: true,
+          includeIneligibleProducts: false,
+          includeSoldOutProducts: false,
+          widgetVersion: '6.6.1',
+        }),
+      });
+      const body = res.ok ? await res.json() : await res.text();
+      return { ok: res.ok, status: res.status, body };
+    },
+    { url: TILES_API, ids: [...ids] },
+  );
 }
 
 function batchIds(ids: readonly number[], size: number): number[][] {
