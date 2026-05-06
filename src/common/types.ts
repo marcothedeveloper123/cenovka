@@ -14,6 +14,8 @@ export interface Product {
   name: string;
   brand?: string;
   category?: string;
+  /** Canonical cross-chain category id (see common/categories.ts). */
+  categoryCanonical?: import('./categories.ts').CanonicalCategory;
   price: number;
   currency: 'CZK';
   unit?: Unit;

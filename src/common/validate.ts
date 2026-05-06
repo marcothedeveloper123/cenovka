@@ -1,3 +1,4 @@
+import { classifyCategory } from './categories.ts';
 import type { Product } from './types.ts';
 
 const MIN_PRICE = 0.01;
@@ -34,6 +35,7 @@ export function cleanProduct(raw: Product): ValidationOutcome {
 
   const brand = raw.brand ? canonicalBrand(cleanString(raw.brand) ?? raw.brand) : undefined;
   const category = raw.category ? cleanString(raw.category) : undefined;
+  const categoryCanonical = classifyCategory(category, raw.store);
   const url = canonicalUrl(raw.url);
 
   let ean = raw.ean;
@@ -43,7 +45,7 @@ export function cleanProduct(raw: Product): ValidationOutcome {
   }
 
   return {
-    product: { ...raw, name, brand, category, url, ean },
+    product: { ...raw, name, brand, category, categoryCanonical, url, ean },
     warnings,
   };
 }
