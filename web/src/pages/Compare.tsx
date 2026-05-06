@@ -454,8 +454,9 @@ type _UnusedMatchGroup = MatchGroup;
 /**
  * Collapse two kinds of duplicate listings:
  *   1) Cross-chain: products in the same `groupId` → keep cheapest member.
- *   2) Within-chain: same store + same name + same quantity (different SKU
- *      IDs that point at effectively the same listing) → keep cheapest.
+ *   2) Within-chain: same store + same brand + same quantity + same name
+ *      with packaging / container words stripped → keep cheapest.
+ *      (e.g. "Budvar Classic *lahev* 0,5 l" ≡ "Budvar Classic *plech* 0,5 l".)
  *
  * Sort by price asc first so "cheapest wins" falls out for free.
  */
@@ -469,8 +470,7 @@ function dedupeListings(products: readonly Product[]): Product[] {
       if (seenGroup.has(p.groupId)) continue;
       seenGroup.add(p.groupId);
     } else {
-      // Within-chain dedupe key: store + folded name + qty/unit.
-      const key = `${p.store}|${foldName(p.name)}|${p.quantity ?? ''}|${p.unit ?? ''}`;
+      const key = `${p.store}|${foldName(p.brand ?? '')}|${stripContainer(foldName(p.name))}|${p.quantity ?? ''}|${p.unit ?? ''}`;
       if (seenChainKey.has(key)) continue;
       seenChainKey.add(key);
     }
@@ -486,4 +486,25 @@ function foldName(name: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ')
     .trim();
+}
+
+// Czech retail container/packaging words. Stripped before computing the
+// within-chain dedupe key so a bottle and a can of the same product collapse.
+const CONTAINER_TOKENS = new Set([
+  'lahev', 'lahvi', 'lahve', 'flase', 'flaska', 'flasky',
+  'plech', 'plechovka', 'plechovky', 'plechovek',
+  'sklo', 'sklenena', 'skleneny', 'skleny',
+  'pet', 'petka', 'petky',
+  'karton', 'kartony',
+  'tetrapak', 'tetra',
+  'sacek', 'sacku', 'vrecko',
+  'box', 'krabice',
+  'doza', 'kelimek',
+]);
+
+function stripContainer(folded: string): string {
+  return folded
+    .split(' ')
+    .filter((tok) => !CONTAINER_TOKENS.has(tok))
+    .join(' ');
 }
