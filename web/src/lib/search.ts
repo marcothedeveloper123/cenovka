@@ -29,6 +29,11 @@ export function emptyFilters(): Filters {
   };
 }
 
+// TODO(search-relevance): substring-everywhere over name+brand+category bleeds —
+// "maslo" returns popcorn/margarine/oil/bread because their categories contain
+// "máslo" (e.g., "Máslo a tuky") or names contain declined forms ("máslové").
+// Replace with score-weighted matching (name >> brand >> category) + light
+// Czech stemming. See docs/web-design.md "Known issues".
 const TOKEN_FIELDS = ['name', 'brand', 'category'] as const;
 
 export function applyFilters(products: readonly Product[], f: Filters): Product[] {

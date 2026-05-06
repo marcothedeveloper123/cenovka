@@ -117,6 +117,10 @@ These are HP features that would've been mistakes to omit. Now in the pillars ab
 - **Citable inflation index.** A single number for press is something HP doesn't expose cleanly.
 - **Methodology page in plain Czech.** Its own minor artifact for a country that doesn't have one yet.
 
+### Known issues from first run-through
+
+- **Search relevance bleeds.** Typing `maslo` returns popcorn, margarine, oil, bread alongside butter. Cause: query is substring-matched across `name + brand + category` joined into one string, so anything in the *butter shelf category* matches, plus `máslové` (declension) matches `máslo` as substring. Needs score-based ranking (name >> category) and Czech-aware light stemming. Tracked separately.
+
 ### Honest read
 
 The differentiators are: country, four small UX upgrades, the inflation number. That's not a moat. The reason to build is "Czech consumers don't have one yet" — sufficient on its own, but worth being clear about so we don't oversell.
