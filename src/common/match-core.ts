@@ -1,5 +1,6 @@
 import { normalise } from './search-core.ts';
 import type { CanonicalProduct, Store } from './types.ts';
+import { multipackHint, varietyConflict, varietyTokensOf } from './varieties.ts';
 
 export interface MatchGroup {
   id: string;
@@ -89,14 +90,27 @@ function unionByBuckets(
     if (!list) buckets.set(key, (list = []));
     list.push(i);
   }
+  // Per-product variety hints (sweetness / colour / flavour / etc.) and
+  // multipack count, computed once and used in both pairwise checks and
+  // cluster-level guards (so transitive bridges can't smuggle a conflict in).
+  const variety: Map<string, Set<string>>[] = items.map(() => new Map());
+  const groupVariety = new Map<number, Map<string, Set<string>>>();
+  const packHint: number[] = items.map((p) => multipackHint(p.name));
   for (const [, idxs] of buckets) {
     if (idxs.length < 2) continue;
     const tokenSets = idxs.map((i) => tokens(items[i]!.name, items[i]!.brand));
+    for (let k = 0; k < idxs.length; k++) {
+      variety[idxs[k]!] = varietyTokensOf(tokenSets[k]!);
+    }
     const weights = bucketWeights(tokenSets);
     for (let a = 0; a < idxs.length; a++) {
       for (let b = a + 1; b < idxs.length; b++) {
-        if (!canPairUnion(items[idxs[a]!]!, items[idxs[b]!]!, tokenSets[a]!, tokenSets[b]!, weights)) continue;
-        tryUnion(parent, groupBrands, idxs[a]!, idxs[b]!, false);
+        const ia = idxs[a]!;
+        const ib = idxs[b]!;
+        if (varietyConflict(variety[ia]!, variety[ib]!)) continue;
+        if (packHint[ia]! !== packHint[ib]!) continue;
+        if (!canPairUnion(items[ia]!, items[ib]!, tokenSets[a]!, tokenSets[b]!, weights)) continue;
+        tryUnion(parent, groupBrands, ia, ib, false, groupVariety, variety);
       }
     }
   }
@@ -108,16 +122,46 @@ function tryUnion(
   i: number,
   j: number,
   allowBrandClash: boolean,
+  groupVariety?: Map<number, Map<string, Set<string>>>,
+  variety?: Map<string, Set<string>>[],
 ): void {
   const ri = find(parent, i);
   const rj = find(parent, j);
   if (ri === rj) return;
   const merged = mergedBrands(groupBrands.get(ri), groupBrands.get(rj));
   if (!allowBrandClash && merged.size > 1) return;
+
+  // Cluster-level variety guard: prevent transitive bridging via products
+  // with no token on a given axis. E.g. "Bohemia Sekt Nealkoholický" has no
+  // sweetness token, so a pair with "Brut" merges fine; then that cluster
+  // has sweetness={brut}, and a later merge with "Demi Sec" would mix
+  // sweetness — which we reject here.
+  let mergedVariety: Map<string, Set<string>> | undefined;
+  if (groupVariety && variety) {
+    const va = groupVariety.get(ri) ?? variety[i] ?? new Map();
+    const vb = groupVariety.get(rj) ?? variety[j] ?? new Map();
+    mergedVariety = mergeVariety(va, vb);
+    for (const tokens of mergedVariety.values()) {
+      if (tokens.size > 1) return;
+    }
+  }
+
   union(parent, i, j);
   const newRoot = find(parent, i);
   if (merged.size > 0) groupBrands.set(newRoot, merged);
   else groupBrands.delete(newRoot);
+  if (groupVariety && mergedVariety) groupVariety.set(newRoot, mergedVariety);
+}
+
+function mergeVariety(a: Map<string, Set<string>>, b: Map<string, Set<string>>): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>();
+  for (const [axis, set] of a) out.set(axis, new Set(set));
+  for (const [axis, set] of b) {
+    const cur = out.get(axis);
+    if (cur) for (const t of set) cur.add(t);
+    else out.set(axis, new Set(set));
+  }
+  return out;
 }
 
 function materializeGroups(items: readonly CanonicalProduct[], parent: number[]): MatchGroup[] {
