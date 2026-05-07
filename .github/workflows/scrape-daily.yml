@@ -9,15 +9,22 @@ on:
 permissions:
   contents: write
 
-# Don't overlap runs (a slow scrape would otherwise stack).
 concurrency:
   group: scrape-daily
   cancel-in-progress: false
 
 jobs:
+  # One job per chain in parallel. Fast chains finish in <30 min; Globus
+  # alone walks ~34k product listings and routinely runs ~2 h, so a single
+  # combined job kept hitting the runner's job timeout. Splitting means each
+  # chain gets its own clock.
   scrape:
+    strategy:
+      fail-fast: false
+      matrix:
+        chain: [tesco, rohlik, kosik, billa, penny, globus]
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
 
@@ -28,20 +35,55 @@ jobs:
 
       - run: npm ci
 
-      # Cache raw output between runs. Cuts disk churn and gives us yesterday's
-      # raw for forensics if today's scrape produces a sudden drop.
-      - name: Restore raw cache
-        uses: actions/cache@v4
-        with:
-          path: data/raw
-          key: data-raw-${{ github.run_id }}
-          restore-keys: |
-            data-raw-
-
-      - name: Scrape (Tesco, Rohlík, Košík, Billa, Penny, Globus — Kaufland excluded)
-        run: npx tsx src/run.ts --exclude kaufland
+      - name: Scrape ${{ matrix.chain }}
+        run: npx tsx src/run.ts --only ${{ matrix.chain }}
         env:
           NODE_OPTIONS: --max-old-space-size=4096
+
+      - name: Upload raw scrape
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-${{ matrix.chain }}-${{ github.run_id }}
+          path: data/raw/${{ matrix.chain }}/
+          if-no-files-found: warn
+          retention-days: 14
+
+  # Once every scrape job finishes (success OR failure — we still want to
+  # publish whatever did succeed), pull the artefacts together, run the
+  # canonical pipeline, commit the gzipped result.
+  finalize:
+    needs: scrape
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Download all raw artefacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: raw-*-${{ github.run_id }}
+          path: artefacts
+
+      - name: Reassemble raw tree
+        # Each artefact came from data/raw/<chain>/. The download splits them
+        # into artefacts/raw-<chain>-<runid>/. Move into the expected layout.
+        run: |
+          mkdir -p data/raw
+          for dir in artefacts/raw-*-${{ github.run_id }}; do
+            chain=$(basename "$dir" | sed -E "s/^raw-(.+)-${{ github.run_id }}$/\1/")
+            mkdir -p "data/raw/$chain"
+            cp -r "$dir"/* "data/raw/$chain/" 2>/dev/null || true
+          done
+          ls -la data/raw/*/ | head -40
 
       - name: Assemble canonical + match groups
         run: |
@@ -65,7 +107,7 @@ jobs:
           git commit -m "data: daily scrape ${DATE} [skip ci]"
           git push
 
-      - name: Upload metrics artefact
+      - name: Upload metrics + per-chain errors
         if: always()
         uses: actions/upload-artifact@v4
         with:
