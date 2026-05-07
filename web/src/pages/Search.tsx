@@ -37,30 +37,39 @@ export function Search({ dataset, route }: Props): React.ReactElement {
   );
   const visible = useMemo(() => results.slice(0, pageLimit), [results, pageLimit]);
 
-  // Faceted counts. Each facet excludes its own filter so the user sees
-  // "how many results if I added this." Categories: filter by everything
-  // except categories. Chains: filter by everything except chains.
+  // Facet counts are computed against the query-filtered set ONLY — not
+  // against other facets. This keeps each facet's size stable when other
+  // facets toggle, so clicking one filter doesn't reflow the sidebar above
+  // and shift the click target out of view. Counts may overstate the
+  // current visible result count when multiple facets are active; that's
+  // the standard tradeoff and matches "how many in this facet given my
+  // search query".
+  const queryFiltered = useMemo(
+    () => filterProducts(dataset.products, {
+      ...filters,
+      stores: new Set(),
+      categories: new Set(),
+      brands: new Set(),
+    }),
+    [dataset.products, filters],
+  );
+
   const categoryCounts = useMemo(() => {
-    const filtered = filterProducts(dataset.products, { ...filters, categories: new Set() });
     const m = new Map<string, number>();
-    for (const p of filtered) if (p.categoryCanonical) m.set(p.categoryCanonical, (m.get(p.categoryCanonical) ?? 0) + 1);
+    for (const p of queryFiltered) if (p.categoryCanonical) m.set(p.categoryCanonical, (m.get(p.categoryCanonical) ?? 0) + 1);
     return m;
-  }, [dataset.products, filters]);
+  }, [queryFiltered]);
 
   const chainCounts = useMemo(() => {
-    const filtered = filterProducts(dataset.products, { ...filters, stores: new Set() });
     const m = new Map<Store, number>();
-    for (const p of filtered) m.set(p.store, (m.get(p.store) ?? 0) + 1);
+    for (const p of queryFiltered) m.set(p.store, (m.get(p.store) ?? 0) + 1);
     return m;
-  }, [dataset.products, filters]);
+  }, [queryFiltered]);
 
-  // Brand counts (excluding the brand filter itself). Pick a display label
-  // per folded key — usually the most common spelling across the result set.
   const brandFacet = useMemo(() => {
-    const filtered = filterProducts(dataset.products, { ...filters, brands: new Set() });
     const counts = new Map<string, number>();
     const labelVotes = new Map<string, Map<string, number>>();
-    for (const p of filtered) {
+    for (const p of queryFiltered) {
       if (!p.brand) continue;
       const key = brandKey(p.brand);
       if (!key) continue;
@@ -75,7 +84,7 @@ export function Search({ dataset, route }: Props): React.ReactElement {
       labels.set(key, winner);
     }
     return { counts, labels };
-  }, [dataset.products, filters]);
+  }, [queryFiltered]);
 
   const update = (next: Filters) => {
     setFilters(next);
@@ -101,19 +110,7 @@ export function Search({ dataset, route }: Props): React.ReactElement {
         {results.length.toLocaleString('cs')} unikátních produktů z {dataset.products.length.toLocaleString('cs')} celkem
       </p>
 
-      {/* min-height keeps the grid taller than the viewport even when filters
-          shrink the result list to a few rows — otherwise the page collapses,
-          window scroll clamps to 0, and the sidebar (sticky top:80) jumps up,
-          taking the brand the user just clicked out of view. */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '240px 1fr',
-          gap: 32,
-          alignItems: 'start',
-          minHeight: 'calc(100vh - 200px)',
-        }}
-      >
+      <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 32, alignItems: 'start' }}>
         <Sidebar
           filters={filters}
           chainCounts={chainCounts}
