@@ -105,7 +105,17 @@ jobs:
           fi
           DATE=$(date -u +%Y-%m-%d)
           git commit -m "data: daily scrape ${DATE} [skip ci]"
-          git push
+          # Workflow runs are long; main may have moved while the scrape was
+          # in flight (manual commits, other CI). Rebase the data commit on
+          # top of whatever's there before pushing. Conflicts are unlikely
+          # since only this workflow writes to data/canonical/*.gz.
+          for attempt in 1 2 3; do
+            if git push; then exit 0; fi
+            echo "push rejected (attempt $attempt) — pulling --rebase and retrying"
+            git pull --rebase --autostash origin main
+          done
+          echo "push still failing after retries"
+          exit 1
 
       - name: Upload metrics + per-chain errors
         if: always()
