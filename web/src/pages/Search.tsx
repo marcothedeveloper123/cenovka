@@ -91,17 +91,40 @@ export function Search({ dataset, route }: Props): React.ReactElement {
   };
 
   return (
-    <div className="container" style={{ padding: '32px 28px 56px' }}>
-      <div className="meta" style={{ marginBottom: 8 }}>VYHLEDÁVÁNÍ</div>
-      <h1 className="display" style={{ fontSize: 36, margin: '0 0 16px' }}>
-        {filters.q ? <>Výsledky pro „<span style={{ color: 'var(--accent)' }}>{filters.q}</span>"</> : 'Hledat v cenovce'}
-      </h1>
+    // Two-pane shell: outer fills the main flex slot (App.tsx makes main a
+    // flex column for /h). Title strip is fixed at top; the grid below has
+    // two scrollable columns. Window itself never scrolls on this route.
+    <div
+      style={{
+        flex: 1,
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+      }}
+    >
+      <div className="container" style={{ paddingTop: 24, paddingBottom: 8, flexShrink: 0 }}>
+        <div className="meta" style={{ marginBottom: 8 }}>VYHLEDÁVÁNÍ</div>
+        <h1 className="display" style={{ fontSize: 36, margin: '0 0 12px' }}>
+          {filters.q ? <>Výsledky pro „<span style={{ color: 'var(--accent)' }}>{filters.q}</span>"</> : 'Hledat v cenovce'}
+        </h1>
+        <p className="num" style={{ color: 'var(--ink-3)', margin: 0 }}>
+          {results.length.toLocaleString('cs')} unikátních produktů z {dataset.products.length.toLocaleString('cs')} celkem
+        </p>
+      </div>
 
-      <p className="num" style={{ color: 'var(--ink-3)', margin: '0 0 24px' }}>
-        {results.length.toLocaleString('cs')} unikátních produktů z {dataset.products.length.toLocaleString('cs')} celkem
-      </p>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 32, alignItems: 'start' }}>
+      <div
+        className="container"
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: 'grid',
+          gridTemplateColumns: '240px 1fr',
+          gap: 32,
+          paddingTop: 16,
+          paddingBottom: 0,
+        }}
+      >
         <Sidebar
           filters={filters}
           chainCounts={chainCounts}
@@ -111,7 +134,7 @@ export function Search({ dataset, route }: Props): React.ReactElement {
           onUpdate={update}
           onToggle={toggle}
         />
-        <div>
+        <div style={{ overflowY: 'auto', minHeight: 0, paddingBottom: 24 }}>
           <SortBar sort={filters.sort} onChange={(sort) => update({ ...filters, sort })} count={results.length} />
           {visible.length === 0 ? (
             <p style={{ color: 'var(--ink-3)', padding: '40px 0' }}>
@@ -177,7 +200,17 @@ function Sidebar({
   const showBrandsSection = allBrandKeys.length > 1;
 
   return (
-    <aside style={{ position: 'sticky', top: 80, fontSize: 14 }}>
+    <aside
+      style={{
+        fontSize: 14,
+        // Own scroll for the facet list. minHeight: 0 lets the flex/grid
+        // child shrink below content size so overflow actually scrolls.
+        overflowY: 'auto',
+        minHeight: 0,
+        paddingRight: 8,
+        paddingBottom: 24,
+      }}
+    >
       {visibleChains.length > 0 && (
         <>
           <div className="meta" style={{ marginBottom: 8 }}>ŘETĚZCE</div>

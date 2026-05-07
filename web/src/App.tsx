@@ -88,11 +88,17 @@ export function App(): React.ReactElement {
 
   const initialQuery = route.path === '/h' ? route.params.get('q') ?? '' : '';
 
+  // Search runs a fixed-height two-pane shell that fills the viewport — its
+  // own columns scroll, the window does not. Hiding the global footer there
+  // keeps the page exactly viewport-tall (no window scroll = no sticky drift,
+  // no clamping of brand list scroll positions on filter toggles).
+  const isTwoPane = route.path === '/h';
+
   return (
-    <div className="app">
+    <div className="app" data-route={route.path}>
       <Header active={route.path} cartCount={cart.total} favCount={favs.count} initialQuery={initialQuery} />
-      <main style={{ flex: 1 }}>{page}</main>
-      <Footer />
+      <main style={{ flex: 1, display: isTwoPane ? 'flex' : undefined, flexDirection: isTwoPane ? 'column' : undefined, minHeight: 0 }}>{page}</main>
+      {!isTwoPane && <Footer />}
       {tweaksEnabled && dataset && <TweaksPanel dataset={dataset} routePath={route.path} />}
     </div>
   );
