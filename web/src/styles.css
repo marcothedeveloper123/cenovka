@@ -142,20 +142,6 @@ select {
   flex-direction: column;
 }
 
-/* main expands to fill the app shell; its single child .container stretches
-   inside it, and pages using a grid layout stretch their grid to fill the
-   container — so when filters shrink the result list, the empty space below
-   the grid doesn't pull the footer up off the bottom of the viewport. */
-.app > main {
-  display: flex;
-  flex-direction: column;
-}
-.app > main > .container {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
 .container {
   width: 100%;
   max-width: 1240px;
