@@ -150,6 +150,10 @@ export function Search({ dataset, route }: Props): React.ReactElement {
 
 const BRANDS_INITIAL = 12;
 
+function byCountDesc<K>(counts: Map<K, number>): (a: K, b: K) => number {
+  return (a, b) => (counts.get(b) ?? 0) - (counts.get(a) ?? 0);
+}
+
 function Sidebar({
   filters,
   chainCounts,
@@ -169,14 +173,15 @@ function Sidebar({
 }): React.ReactElement {
   const [showAllBrands, setShowAllBrands] = useState(false);
 
-  // Show only chains/categories that have at least one match in the current
-  // result set (excluding their own filter). Sort by count desc.
-  const visibleChains = (Object.keys(STORE_LABELS) as Store[])
-    .filter((s) => filters.stores.has(s) || (chainCounts.get(s) ?? 0) > 0)
-    .sort((a, b) => (chainCounts.get(b) ?? 0) - (chainCounts.get(a) ?? 0));
-  const visibleCategories = CANONICAL_CATEGORIES.filter(
-    (c) => filters.categories.has(c.id) || (categoryCounts.get(c.id) ?? 0) > 0,
-  ).sort((a, b) => (categoryCounts.get(b.id) ?? 0) - (categoryCounts.get(a.id) ?? 0));
+  // Always render every chain + category, sorted by count desc (count==0 last
+  // alphabetically). Hiding empties on every filter change shrinks the
+  // sidebar above the brand list, so when the user clicks a deep brand the
+  // visible scroll position lifts it out of view. Stable height = no jump.
+  // FacetRow already dims rows where count==0 && !checked.
+  const visibleChains = (Object.keys(STORE_LABELS) as Store[]).slice().sort(byCountDesc(chainCounts));
+  const visibleCategories = CANONICAL_CATEGORIES.slice().sort((a, b) =>
+    (categoryCounts.get(b.id) ?? 0) - (categoryCounts.get(a.id) ?? 0)
+  );
 
   const allBrandKeys = [...brandCounts.entries()]
     .filter(([k]) => k.length > 0)
@@ -202,39 +207,31 @@ function Sidebar({
         paddingRight: 4,
       }}
     >
-      {visibleChains.length > 0 && (
-        <>
-          <div className="meta" style={{ marginBottom: 8 }}>ŘETĚZCE</div>
-          <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 24px' }}>
-            {visibleChains.map((s) => (
-              <FacetRow
-                key={s}
-                label={STORE_LABELS[s]}
-                count={chainCounts.get(s) ?? 0}
-                checked={filters.stores.has(s)}
-                onToggle={() => onToggle('stores', s)}
-              />
-            ))}
-          </ul>
-        </>
-      )}
+      <div className="meta" style={{ marginBottom: 8 }}>ŘETĚZCE</div>
+      <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 24px' }}>
+        {visibleChains.map((s) => (
+          <FacetRow
+            key={s}
+            label={STORE_LABELS[s]}
+            count={chainCounts.get(s) ?? 0}
+            checked={filters.stores.has(s)}
+            onToggle={() => onToggle('stores', s)}
+          />
+        ))}
+      </ul>
 
-      {visibleCategories.length > 0 && (
-        <>
-          <div className="meta" style={{ marginBottom: 8 }}>KATEGORIE</div>
-          <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 24px' }}>
-            {visibleCategories.map((c) => (
-              <FacetRow
-                key={c.id}
-                label={c.label}
-                count={categoryCounts.get(c.id) ?? 0}
-                checked={filters.categories.has(c.id)}
-                onToggle={() => onToggle('categories', c.id)}
-              />
-            ))}
-          </ul>
-        </>
-      )}
+      <div className="meta" style={{ marginBottom: 8 }}>KATEGORIE</div>
+      <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 24px' }}>
+        {visibleCategories.map((c) => (
+          <FacetRow
+            key={c.id}
+            label={c.label}
+            count={categoryCounts.get(c.id) ?? 0}
+            checked={filters.categories.has(c.id)}
+            onToggle={() => onToggle('categories', c.id)}
+          />
+        ))}
+      </ul>
 
       {showBrandsSection && (
         <>
