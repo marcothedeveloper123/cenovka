@@ -177,19 +177,7 @@ function Sidebar({
   const showBrandsSection = allBrandKeys.length > 1;
 
   return (
-    <aside
-      style={{
-        position: 'sticky',
-        top: 80,
-        fontSize: 14,
-        // Keep the sidebar scrollable when long brand lists overflow.
-        // 80px header + 16px breathing room.
-        maxHeight: 'calc(100vh - 96px)',
-        overflowY: 'auto',
-        // Subtle right padding so the inline scrollbar doesn't crowd content.
-        paddingRight: 4,
-      }}
-    >
+    <aside style={{ position: 'sticky', top: 80, fontSize: 14 }}>
       {visibleChains.length > 0 && (
         <>
           <div className="meta" style={{ marginBottom: 8 }}>ŘETĚZCE</div>
