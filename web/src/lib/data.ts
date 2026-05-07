@@ -46,9 +46,11 @@ const STORE_NAMES: Record<Store, string> = {
 };
 
 export async function loadDataset(): Promise<Dataset> {
+  // Prefer the gzipped sibling (~8 MB vs 53 MB); fall back to plain JSON when
+  // it isn't there (e.g., dev with stale data dir, browsers without DCS).
   const [canonical, groups] = await Promise.all([
-    fetchJson<RawCanonical>('/data/latest.json'),
-    fetchJson<RawGroup[]>('/data/groups.json').catch(() => [] as RawGroup[]),
+    fetchMaybeGz<RawCanonical>('/data/latest.json'),
+    fetchMaybeGz<RawGroup[]>('/data/groups.json').catch(() => [] as RawGroup[]),
   ]);
 
   const groupByKey = new Map<string, string>();
@@ -111,4 +113,21 @@ async function fetchJson<T>(url: string): Promise<T> {
   const res = await fetch(url, { cache: 'no-store' });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText} for ${url}`);
   return (await res.json()) as T;
+}
+
+async function fetchMaybeGz<T>(url: string): Promise<T> {
+  // Try .gz first when DecompressionStream is available; fall back to plain.
+  if (typeof DecompressionStream !== 'undefined') {
+    try {
+      const res = await fetch(`${url}.gz`, { cache: 'no-store' });
+      if (res.ok && res.body) {
+        const stream = res.body.pipeThrough(new DecompressionStream('gzip'));
+        const text = await new Response(stream).text();
+        return JSON.parse(text) as T;
+      }
+    } catch {
+      // fall through
+    }
+  }
+  return fetchJson<T>(url);
 }

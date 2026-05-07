@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { gzipSync } from 'node:zlib';
 import { assemble } from './common/assemble-core.ts';
 import type { CanonicalDataset, Product, Store } from './common/types.ts';
 import { cleanProduct } from './common/validate.ts';
@@ -82,7 +83,11 @@ async function main(): Promise<void> {
 
   const { dataset, metrics } = assemble(todays, prior, date);
   await mkdir(CANONICAL_DIR, { recursive: true });
-  await writeFile(LATEST_PATH, JSON.stringify(dataset));
+  const json = JSON.stringify(dataset);
+  // Plain JSON for local browsing/debug; gzipped sibling is what the SPA
+  // and cron commits use (~6× smaller, 8 MB vs 53 MB at current scale).
+  await writeFile(LATEST_PATH, json);
+  await writeFile(`${LATEST_PATH}.gz`, gzipSync(json));
   await writeFile(
     join(CANONICAL_DIR, `metrics-${date}.json`),
     JSON.stringify(metrics, null, 2),

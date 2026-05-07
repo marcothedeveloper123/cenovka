@@ -1,5 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { gzipSync } from 'node:zlib';
 import { buildMatchGroups } from './common/match-core.ts';
 import type { CanonicalDataset } from './common/types.ts';
 
@@ -11,8 +12,10 @@ async function main(): Promise<void> {
   const dataset = JSON.parse(body) as CanonicalDataset;
   const groups = buildMatchGroups(dataset.products);
 
-  await writeFile(GROUPS_PATH, JSON.stringify(groups, null, 2));
-  console.log(`[match] ${groups.length} cross-chain groups written to ${GROUPS_PATH}`);
+  const json = JSON.stringify(groups, null, 2);
+  await writeFile(GROUPS_PATH, json);
+  await writeFile(`${GROUPS_PATH}.gz`, gzipSync(json));
+  console.log(`[match] ${groups.length} cross-chain groups written to ${GROUPS_PATH}(.gz)`);
 
   if (groups.length === 0) return;
   console.log(`[match] sample groups:`);

@@ -58,12 +58,18 @@ async function main(): Promise<void> {
   const limit = limitArg >= 0 ? Number(process.argv[limitArg + 1]) : undefined;
   const onlyArg = process.argv.indexOf('--only');
   const only = onlyArg >= 0 ? process.argv[onlyArg + 1] : undefined;
+  const excludeArg = process.argv.indexOf('--exclude');
+  const exclude = new Set(
+    excludeArg >= 0 ? (process.argv[excludeArg + 1] ?? '').split(',').filter(Boolean) : [],
+  );
 
   const date = new Date().toISOString().slice(0, 10);
-  const targets = only ? RUNNERS.filter((r) => r.store === only) : RUNNERS;
+  const targets = only
+    ? RUNNERS.filter((r) => r.store === only)
+    : RUNNERS.filter((r) => !exclude.has(r.store));
 
   if (targets.length === 0) {
-    console.error(`No runner matched --only ${only}`);
+    console.error(`No runners — only=${only ?? '∅'} exclude=${[...exclude].join(',') || '∅'}`);
     process.exit(1);
   }
 

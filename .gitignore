@@ -1,6 +1,19 @@
 node_modules/
-data/
 *.log
 .DS_Store
 .claude/
 .playwright-mcp/
+
+# Raw scrape output: large (50+ MB/day), regenerable, not useful in history.
+data/raw/
+
+# Browser profile for Kaufland scraper — local-only, not portable.
+data/.kaufland-profile/
+
+# Per-day metrics — useful as artefact, not as commit history.
+data/canonical/metrics-*.json
+
+# Uncompressed JSON: kept locally for inspection/debugging, never committed.
+# Cron commits only the .json.gz siblings (8 MB vs 53 MB).
+data/canonical/latest.json
+data/canonical/groups.json

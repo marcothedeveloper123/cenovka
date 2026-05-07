@@ -1,0 +1,77 @@
+name: scrape-daily
+
+on:
+  # 03:00 UTC = 05:00 Europe/Prague (off-peak for CZ retailers).
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+# Don't overlap runs (a slow scrape would otherwise stack).
+concurrency:
+  group: scrape-daily
+  cancel-in-progress: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # Cache raw output between runs. Cuts disk churn and gives us yesterday's
+      # raw for forensics if today's scrape produces a sudden drop.
+      - name: Restore raw cache
+        uses: actions/cache@v4
+        with:
+          path: data/raw
+          key: data-raw-${{ github.run_id }}
+          restore-keys: |
+            data-raw-
+
+      - name: Scrape (Tesco, Rohlík, Košík, Billa, Penny, Globus — Kaufland excluded)
+        run: npx tsx src/run.ts --exclude kaufland
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+
+      - name: Assemble canonical + match groups
+        run: |
+          npx tsx src/assemble.ts
+          npx tsx src/match.ts
+          npx tsx src/report.ts || true
+
+      - name: Audit duplicates (informational)
+        run: npx tsx src/audit-dups.ts | tail -8 || true
+
+      - name: Commit canonical changes
+        run: |
+          git config user.name  "cenovka-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/canonical/latest.json.gz data/canonical/groups.json.gz || true
+          if git diff --staged --quiet; then
+            echo "No canonical changes to commit."
+            exit 0
+          fi
+          DATE=$(date -u +%Y-%m-%d)
+          git commit -m "data: daily scrape ${DATE} [skip ci]"
+          git push
+
+      - name: Upload metrics artefact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: metrics-${{ github.run_id }}
+          path: |
+            data/canonical/metrics-*.json
+            data/raw/*/*.errors.json
+          if-no-files-found: ignore
+          retention-days: 30
