@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { forwardRef, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { fmtCZK } from '../lib/format.ts';
 import { navigate, type Route } from '../lib/route.ts';
 import {
@@ -77,7 +77,26 @@ export function Search({ dataset, route }: Props): React.ReactElement {
     return { counts, labels };
   }, [dataset.products, filters]);
 
+  // Preserve scroll across filter toggles. When a filter shrinks the results
+  // dramatically, the page height can collapse below window.scrollY and the
+  // browser clamps it, visually yanking the sidebar (and the just-clicked
+  // checkbox) up. Snapshot here, restore in useLayoutEffect after commit.
+  const sidebarRef = useRef<HTMLElement>(null);
+  const pendingScroll = useRef<{ window: number; sidebar: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const target = pendingScroll.current;
+    if (!target) return;
+    pendingScroll.current = null;
+    window.scrollTo({ top: target.window });
+    if (sidebarRef.current) sidebarRef.current.scrollTop = target.sidebar;
+  });
+
   const update = (next: Filters) => {
+    pendingScroll.current = {
+      window: window.scrollY,
+      sidebar: sidebarRef.current?.scrollTop ?? 0,
+    };
     setFilters(next);
     setPageLimit(PAGE_SIZE);
     navigate('/h', filtersToParams(next));
@@ -115,6 +134,7 @@ export function Search({ dataset, route }: Props): React.ReactElement {
         }}
       >
         <Sidebar
+          ref={sidebarRef}
           filters={filters}
           chainCounts={chainCounts}
           categoryCounts={categoryCounts}
@@ -150,15 +170,7 @@ export function Search({ dataset, route }: Props): React.ReactElement {
 
 const BRANDS_INITIAL = 12;
 
-function Sidebar({
-  filters,
-  chainCounts,
-  categoryCounts,
-  brandCounts,
-  brandLabels,
-  onUpdate,
-  onToggle,
-}: {
+interface SidebarProps {
   filters: Filters;
   chainCounts: Map<Store, number>;
   categoryCounts: Map<string, number>;
@@ -166,7 +178,17 @@ function Sidebar({
   brandLabels: Map<string, string>;
   onUpdate: (f: Filters) => void;
   onToggle: (key: 'stores' | 'categories' | 'brands', value: string) => void;
-}): React.ReactElement {
+}
+
+const Sidebar = forwardRef<HTMLElement, SidebarProps>(function Sidebar({
+  filters,
+  chainCounts,
+  categoryCounts,
+  brandCounts,
+  brandLabels,
+  onUpdate,
+  onToggle,
+}, ref): React.ReactElement {
   const [showAllBrands, setShowAllBrands] = useState(false);
 
   // Show only chains/categories that have at least one match in the current
@@ -190,6 +212,7 @@ function Sidebar({
 
   return (
     <aside
+      ref={ref}
       style={{
         position: 'sticky',
         top: 80,
@@ -289,7 +312,7 @@ function Sidebar({
       </label>
     </aside>
   );
-}
+});
 
 function FacetRow({
   label,
