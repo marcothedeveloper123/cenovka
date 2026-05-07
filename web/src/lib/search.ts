@@ -3,6 +3,7 @@ import { foldName, stripContainer } from './fold.ts';
 import { normalize } from './format.ts';
 
 export type SortKey =
+  | 'relevance'
   | 'unit-asc'
   | 'unit-desc'
   | 'price-asc'
@@ -32,6 +33,8 @@ export interface ResultEntry {
   alternates: Product[];
   /** Total members of the group in the full dataset (before filtering). */
   totalGroupSize: number;
+  /** Relevance score for the rep (0 when no query). Used for the 'relevance' sort. */
+  score: number;
 }
 
 /** Tight groups (≤ this) collapse to one row with alternates — the canonical
@@ -54,15 +57,15 @@ export function emptyFilters(): Filters {
   };
 }
 
-// Match each query token against name + brand only — NOT the chain's category
-// breadcrumb. Tesco categorizes peppers/chilli under "Ovoce a zelenina >
-// Zelenina > Rajčata", so including the category text means "rajcata" matches
-// every pepper. The canonical category is still used as a STRUCTURAL filter
-// (the categories facet) but not for free-text search.
-//
-// TODO(search-relevance, #15): still substring-only — "maslo" matches
-// "máslové" via substring; needs declension-aware stemming + score-weighted
-// ranking (name 10× > brand 3×).
+/**
+ * Filter against name + brand. Score-weighted: each query token has to land
+ * on every product (whole-word > prefix > substring), and we keep the highest
+ * tier per token. Products where every token matches are kept; the score on
+ * each rep drives the 'relevance' sort.
+ *
+ * Categories aren't part of the haystack — Tesco's breadcrumb says peppers
+ * are under "rajčata" and that bled into every pepper search.
+ */
 export function filterProducts(products: readonly Product[], f: Filters): Product[] {
   const tokens = tokenize(f.q);
   let out: Product[] = products.slice();
@@ -74,12 +77,60 @@ export function filterProducts(products: readonly Product[], f: Filters): Produc
   if (f.bioOnly) out = out.filter((p) => /\bbio\b/i.test(p.name));
   if (typeof f.minQty === 'number') out = out.filter((p) => (p.quantity ?? 0) >= f.minQty!);
   if (tokens.length > 0) {
-    out = out.filter((p) => {
-      const haystack = `${normalize(p.name)} ${normalize(p.brand ?? '')}`;
-      return tokens.every((t) => haystack.includes(t));
-    });
+    out = out.filter((p) => scoreQueryMatch(tokens, p) > 0);
   }
   return out;
+}
+
+const PREFIX_MIN = 4;
+
+/**
+ * Returns 0 if any query token fails to match; otherwise sum of best-tier
+ * matches per token. Tier weights:
+ *   name whole word: 10
+ *   name prefix     : 5  (token is prefix of a name word, both ≥4 chars)
+ *   name substring  : 1
+ *   brand whole word: 3
+ *   brand prefix    : 1.5
+ *   brand substring : 0.3
+ */
+export function scoreQueryMatch(tokens: readonly string[], p: Product): number {
+  if (tokens.length === 0) return 0;
+  const nameWords = wordSet(p.name);
+  const brandWords = wordSet(p.brand ?? '');
+  const nameStr = normalize(p.name);
+  const brandStr = normalize(p.brand ?? '');
+
+  let total = 0;
+  for (const t of tokens) {
+    let best = 0;
+    if (nameWords.has(t)) best = Math.max(best, 10);
+    else if (t.length >= PREFIX_MIN && hasPrefix(nameWords, t)) best = Math.max(best, 5);
+    else if (nameStr.includes(t)) best = Math.max(best, 1);
+
+    if (brandWords.has(t)) best = Math.max(best, 3);
+    else if (t.length >= PREFIX_MIN && hasPrefix(brandWords, t)) best = Math.max(best, 1.5);
+    else if (brandStr.includes(t)) best = Math.max(best, 0.3);
+
+    if (best === 0) return 0;
+    total += best;
+  }
+  return total;
+}
+
+function wordSet(s: string): Set<string> {
+  const out = new Set<string>();
+  for (const w of normalize(s).split(/[\s,()/.-]+/)) {
+    if (w.length >= 2) out.add(w);
+  }
+  return out;
+}
+
+function hasPrefix(words: Set<string>, t: string): boolean {
+  for (const w of words) {
+    if (w.length >= PREFIX_MIN && w.startsWith(t)) return true;
+  }
+  return false;
 }
 
 /** Filter, dedupe by match-group, sort. The Search page's main entry point. */
@@ -95,6 +146,10 @@ export function searchAndDedup(
 
   const groupSize = new Map<string, number>();
   for (const g of groups) groupSize.set(g.id, g.productKeys.length);
+
+  const queryTokens = tokenize(f.q);
+  const score = (p: Product): number =>
+    queryTokens.length === 0 ? 0 : scoreQueryMatch(queryTokens, p);
 
   const tight = new Map<string, Product[]>();
   const broad = new Map<string, Product[]>();
@@ -117,10 +172,12 @@ export function searchAndDedup(
   // Tight groups: one row, all chain members as alternates.
   for (const [gid, members] of tight) {
     const cheapest = members.slice().sort((a, b) => a.price - b.price);
+    const rep = cheapest[0]!;
     entries.push({
-      rep: cheapest[0]!,
+      rep,
       alternates: cheapest.slice(1),
       totalGroupSize: groupSize.get(gid) ?? members.length,
+      score: members.reduce((max, m) => Math.max(max, score(m)), 0),
     });
   }
 
@@ -142,16 +199,18 @@ export function searchAndDedup(
     }
     for (const sub of subByName.values()) {
       const cheapest = sub.slice().sort((a, b) => a.price - b.price);
+      const rep = cheapest[0]!;
       entries.push({
-        rep: cheapest[0]!,
+        rep,
         alternates: cheapest.slice(1),
         totalGroupSize: total,
+        score: sub.reduce((max, m) => Math.max(max, score(m)), 0),
       });
     }
   }
 
   for (const s of singletons) {
-    entries.push({ rep: s, alternates: [], totalGroupSize: 1 });
+    entries.push({ rep: s, alternates: [], totalGroupSize: 1, score: score(s) });
   }
 
   return sortEntries(entries, f.sort);
@@ -179,6 +238,15 @@ function collapseWithinChain(products: readonly Product[]): Product[] {
 function sortEntries(entries: ResultEntry[], sort: SortKey): ResultEntry[] {
   const arr = entries.slice();
   switch (sort) {
+    case 'relevance':
+      // Score desc, then unit price asc as tiebreaker so equally-relevant
+      // products are still cheapest-first.
+      arr.sort(
+        (a, b) =>
+          b.score - a.score ||
+          (a.rep.unitPrice ?? Infinity) - (b.rep.unitPrice ?? Infinity),
+      );
+      break;
     case 'unit-asc':
       arr.sort((a, b) => (a.rep.unitPrice ?? Infinity) - (b.rep.unitPrice ?? Infinity));
       break;

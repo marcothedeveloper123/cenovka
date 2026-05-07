@@ -309,6 +309,7 @@ function SortBar({
   count: number;
 }): React.ReactElement {
   const options: Array<{ value: SortKey; label: string }> = [
+    { value: 'relevance', label: 'Relevance' },
     { value: 'unit-asc', label: 'Nejlevnější za jednotku' },
     { value: 'unit-desc', label: 'Nejdražší za jednotku' },
     { value: 'price-asc', label: 'Nejlevnější celkem' },
@@ -566,15 +567,19 @@ function Row({
 
 function filtersFromRoute(route: Route): Filters {
   const p = route.params;
+  const q = p.get('q') ?? '';
+  // Default sort: 'relevance' when there's a query (so search ranks by match
+  // quality), 'unit-asc' otherwise (browsing by best ¢/unit).
+  const defaultSort: SortKey = q ? 'relevance' : 'unit-asc';
   return {
-    q: p.get('q') ?? '',
+    q,
     stores: new Set(((p.get('chains') ?? '').split(',').filter(Boolean)) as Store[]),
     categories: new Set((p.get('cats') ?? '').split(',').filter(Boolean)),
     brands: new Set((p.get('brands') ?? '').split(',').filter(Boolean)),
     bioOnly: p.get('bio') === '1',
     minQty: p.get('minQty') ? Number(p.get('minQty')) : undefined,
     showUnavailable: p.get('all') === '1',
-    sort: ((p.get('sort') as SortKey | null) ?? 'unit-asc'),
+    sort: ((p.get('sort') as SortKey | null) ?? defaultSort),
   };
 }
 
@@ -587,6 +592,7 @@ function filtersToParams(f: Filters): Record<string, string> {
   if (f.bioOnly) out.bio = '1';
   if (typeof f.minQty === 'number') out.minQty = String(f.minQty);
   if (f.showUnavailable) out.all = '1';
-  if (f.sort !== 'unit-asc') out.sort = f.sort;
+  const defaultSort: SortKey = f.q ? 'relevance' : 'unit-asc';
+  if (f.sort !== defaultSort) out.sort = f.sort;
   return out;
 }
