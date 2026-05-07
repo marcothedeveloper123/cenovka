@@ -101,19 +101,7 @@ export function Search({ dataset, route }: Props): React.ReactElement {
         {results.length.toLocaleString('cs')} unikátních produktů z {dataset.products.length.toLocaleString('cs')} celkem
       </p>
 
-      {/* min-height keeps the grid taller than the viewport even when filters
-          shrink the result list to a few rows — otherwise the page collapses,
-          window scroll clamps to 0, and the sidebar (sticky top:80) jumps up,
-          taking the brand the user just clicked out of view. */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '240px 1fr',
-          gap: 32,
-          alignItems: 'start',
-          minHeight: 'calc(100vh - 200px)',
-        }}
-      >
+      <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 32, alignItems: 'start' }}>
         <Sidebar
           filters={filters}
           chainCounts={chainCounts}
