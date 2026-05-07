@@ -1,5 +1,49 @@
 # Devlog
 
+## 2026-05-07 — Cron, matcher upgrade, search relevance, two-pane shell
+
+### Context
+Day-2 work: ship the daily pipeline, fix the matcher's known over- and under-clustering, rework search relevance, and resolve a stubborn layout bug on the search page.
+
+### Done
+- **GitHub Actions cron** (`.github/workflows/scrape-daily.yml`). Daily 03:00 UTC, six chains in a parallel matrix (Kaufland excluded — IP rate-limited; runs locally). Finalize job downloads per-chain raw artefacts, assembles + matches + commits canonical `.json.gz` to main with `[skip ci]`. Initial single-job version hit GH's 90-min ceiling on Globus alone (other five chains were waiting in `Promise.all`).
+- **Canonical compressed**. `latest.json` 53 MB → `.gz` 8.4 MB; `groups.json` 6 MB → 880 KB. Git tracks only the gzipped form. SPA loads via `DecompressionStream` with a plain-JSON fallback.
+- **EAN normalization** (`validate.normalizeEan`). Tesco emits GTIN-14 ("08593…"), Globus emits EAN-13 ("8593…") — same product, zero intersection. Strip leading zeros, re-pad to 13. Unlocked ~7000 cross-chain pairs the matcher had been blind to. EAN-8 left alone.
+- **Matcher rewrite** (`src/common/match-core.ts`). Unified union-find with two passes: EAN equality first (strongest signal), then bucket (category, unit, qty) + Jaccard. The bucket pass merges into existing EAN clusters so EAN-less Billa/Rohlík twins join Tesco/Globus EAN groups.
+- **Variety axes** (`src/common/varieties.ts`). Hardcoded Czech retail discriminators — sweetness, colour, alcohol, tier, flavour (CZ + EN), beer-style, sugar — that always count as splitters regardless of bucket frequency. Cluster-level signature tracked through union-find: rejects transitive bridges where a no-axis-token product (e.g. "Bohemia Sekt Nealkoholický") would otherwise fuse Brut and Demi clusters.
+- **`multipackHint`**. `8x` / `4×` / `6 x` patterns rejected in pair check. 4×500 ml multipacks no longer cluster with singles.
+- **`src/audit-dups.ts`**. Permanent feedback channel — scans canonical for over-clustering, missing-link, and dead-brand patterns. Replaces the user-spots-a-dup → I-patch-it loop.
+- **Search relevance** (`web/src/lib/search.ts`). Score-weighted matching: name whole-word 10, name prefix 5 (≥4 chars), name substring 1; brand 3 / 1.5 / 0.3. New 'relevance' sort, default when there's a query. Closes #15 (`máslo` no longer ranks butter cookies above butter).
+- **Two-pane shell on /h** (`web/src/pages/Search.tsx` + `web/src/App.tsx`). Window scroll locked on the search route; sidebar and results each have their own `overflow-y: auto`. Footer hides on /h to keep the page exactly viewport-tall. Killed the brand-list-jump bug class (no page reflow → no sticky drift → no scroll clamp).
+- **Brands facet** (web side). New `Filters.brands`, `brandKey()` for case+diacritic-insensitive equality. URL param `brands=…`. Top-12 + "show all" toggle.
+- **CompareIndex page** (`/c`). Top 40 cross-chain spreads as a clickable index instead of a 404-style fallback.
+
+### Numbers (audit-dups before / after)
+- groups: 7337 → 10268 (+40%)
+- top oversized group: 121 → 34
+- groups>10 members: 30 → ~89 *(more granular, not bigger)*
+- dead-brand pairs: 910 → 542
+- 108/108 tests pass
+
+### Learned
+- **Whack-a-mole costs more than measurement.** Patched the brand-jump bug four times by reasoning about layout from one floor down; each attempt missed. The user's "take a step back" was the right call. Should have opened the running app first. Lesson: when three guesses miss, change methodology — measure or change the design.
+- **Two-pane shells eliminate a class of layout bugs.** Window-scroll-driven sticky elements interact with content height in subtle ways (sticky engagement threshold, scroll clamping, parent-block bottom edge releases). Locking window scroll and giving each column its own overflow makes filter toggles trivially stable.
+- **EAN padding asymmetries are silent killers.** Tesco's `08…` vs Globus's `8…` produced 0% cross-store EAN matches across 47k EAN-bearing products. One-line `padStart(13, '0')` fix unlocked thousands of correct groups. Always normalize external-ID formats at the validation boundary, not at use-sites.
+- **Pair-level constraints aren't enough for transitive matchers.** `varietyConflict` correctly rejected Brut↔Demi, but a Nealko-only product had no token on either axis and bridged them. Cluster-level signatures are required when you union-find your way to clusters.
+- **GitHub Actions matrix > one big job for parallel-but-uneven workloads.** Six chains in a single `Promise.all` job hit the 90-min ceiling on Globus while five idle workers waited. `strategy.matrix` gives each chain its own clock and the wall-time is `max(chain)`, not `sum(chain)`.
+
+### Next
+- Wine groups still oversized (Château Valtice ~93 members). Variant tokens are vintner+region+grape variety (e.g. "Rulandské", "Frankovka", "Müller Thurgau") — could be added to a 'grape' axis but would need careful curation.
+- Search relevance still substring-only (`maslo` matches `máslové` via prefix at score 5, but ranks below whole-word matches — acceptable for now). Real Czech declension stemming would help.
+- Penny brand=0% (REWE Nuxt payload doesn't expose it). Globus brand=4% (only house brands). Both block 30%+ of products from cross-chain matching.
+- Wolt/foodora still excluded (price distortion).
+
+### Proof
+- `npm test`: 108/108 passing.
+- `tsc --noEmit` clean web-side. `vite build` produces 269 kB JS / 4.2 kB CSS / 80.6 kB gzip.
+- Cron triggered manually mid-session — first matrix run validated the parallelism and finalize commit pipeline (Globus completed in ~2 h as expected).
+- Audit run after each matcher change drove the iteration; numbers in the auditor's summary footer.
+
 ## 2026-05-06 — Web SPA: full pillar build-out
 
 ### Context
