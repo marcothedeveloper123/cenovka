@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { fmtCZK } from '../lib/format.ts';
 import { navigate, type Route } from '../lib/route.ts';
 import {
+  brandKey,
   CANONICAL_CATEGORIES,
   filterProducts,
   searchAndDedup,
@@ -53,13 +54,36 @@ export function Search({ dataset, route }: Props): React.ReactElement {
     return m;
   }, [dataset.products, filters]);
 
+  // Brand counts (excluding the brand filter itself). Pick a display label
+  // per folded key — usually the most common spelling across the result set.
+  const brandFacet = useMemo(() => {
+    const filtered = filterProducts(dataset.products, { ...filters, brands: new Set() });
+    const counts = new Map<string, number>();
+    const labelVotes = new Map<string, Map<string, number>>();
+    for (const p of filtered) {
+      if (!p.brand) continue;
+      const key = brandKey(p.brand);
+      if (!key) continue;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+      let votes = labelVotes.get(key);
+      if (!votes) labelVotes.set(key, (votes = new Map()));
+      votes.set(p.brand, (votes.get(p.brand) ?? 0) + 1);
+    }
+    const labels = new Map<string, string>();
+    for (const [key, votes] of labelVotes) {
+      const winner = [...votes.entries()].sort((a, b) => b[1] - a[1])[0]![0];
+      labels.set(key, winner);
+    }
+    return { counts, labels };
+  }, [dataset.products, filters]);
+
   const update = (next: Filters) => {
     setFilters(next);
     setPageLimit(PAGE_SIZE);
     navigate('/h', filtersToParams(next));
   };
 
-  const toggle = (key: 'stores' | 'categories', value: string) => {
+  const toggle = (key: 'stores' | 'categories' | 'brands', value: string) => {
     const next = new Set(filters[key]) as Set<string>;
     if (next.has(value)) next.delete(value);
     else next.add(value);
@@ -82,6 +106,8 @@ export function Search({ dataset, route }: Props): React.ReactElement {
           filters={filters}
           chainCounts={chainCounts}
           categoryCounts={categoryCounts}
+          brandCounts={brandFacet.counts}
+          brandLabels={brandFacet.labels}
           onUpdate={update}
           onToggle={toggle}
         />
@@ -110,19 +136,27 @@ export function Search({ dataset, route }: Props): React.ReactElement {
   );
 }
 
+const BRANDS_INITIAL = 12;
+
 function Sidebar({
   filters,
   chainCounts,
   categoryCounts,
+  brandCounts,
+  brandLabels,
   onUpdate,
   onToggle,
 }: {
   filters: Filters;
   chainCounts: Map<Store, number>;
   categoryCounts: Map<string, number>;
+  brandCounts: Map<string, number>;
+  brandLabels: Map<string, string>;
   onUpdate: (f: Filters) => void;
-  onToggle: (key: 'stores' | 'categories', value: string) => void;
+  onToggle: (key: 'stores' | 'categories' | 'brands', value: string) => void;
 }): React.ReactElement {
+  const [showAllBrands, setShowAllBrands] = useState(false);
+
   // Show only chains/categories that have at least one match in the current
   // result set (excluding their own filter). Sort by count desc.
   const visibleChains = (Object.keys(STORE_LABELS) as Store[])
@@ -131,6 +165,16 @@ function Sidebar({
   const visibleCategories = CANONICAL_CATEGORIES.filter(
     (c) => filters.categories.has(c.id) || (categoryCounts.get(c.id) ?? 0) > 0,
   ).sort((a, b) => (categoryCounts.get(b.id) ?? 0) - (categoryCounts.get(a.id) ?? 0));
+
+  const allBrandKeys = [...brandCounts.entries()]
+    .filter(([k]) => k.length > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k]) => k);
+  // Always include selected brands so the user can untick them.
+  const selected = new Set(filters.brands);
+  const visibleBrandKeys = (showAllBrands ? allBrandKeys : allBrandKeys.slice(0, BRANDS_INITIAL))
+    .concat(allBrandKeys.filter((k) => selected.has(k) && !showAllBrands && allBrandKeys.indexOf(k) >= BRANDS_INITIAL));
+  const showBrandsSection = allBrandKeys.length > 1;
 
   return (
     <aside style={{ position: 'sticky', top: 80, fontSize: 14 }}>
@@ -165,6 +209,40 @@ function Sidebar({
               />
             ))}
           </ul>
+        </>
+      )}
+
+      {showBrandsSection && (
+        <>
+          <div className="meta" style={{ marginBottom: 8 }}>ZNAČKY</div>
+          <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 8px' }}>
+            {visibleBrandKeys.map((k) => (
+              <FacetRow
+                key={k}
+                label={brandLabels.get(k) ?? k}
+                count={brandCounts.get(k) ?? 0}
+                checked={filters.brands.has(k)}
+                onToggle={() => onToggle('brands', k)}
+              />
+            ))}
+          </ul>
+          {allBrandKeys.length > BRANDS_INITIAL && (
+            <button
+              type="button"
+              onClick={() => setShowAllBrands((v) => !v)}
+              className="meta"
+              style={{
+                marginBottom: 24,
+                color: 'var(--ink-3)',
+                borderBottom: '1px dotted var(--ink-4)',
+                cursor: 'pointer',
+              }}
+            >
+              {showAllBrands
+                ? `↑ ZOBRAZIT MÉNĚ`
+                : `↓ ZOBRAZIT VŠECH ${allBrandKeys.length}`}
+            </button>
+          )}
         </>
       )}
 
@@ -492,6 +570,7 @@ function filtersFromRoute(route: Route): Filters {
     q: p.get('q') ?? '',
     stores: new Set(((p.get('chains') ?? '').split(',').filter(Boolean)) as Store[]),
     categories: new Set((p.get('cats') ?? '').split(',').filter(Boolean)),
+    brands: new Set((p.get('brands') ?? '').split(',').filter(Boolean)),
     bioOnly: p.get('bio') === '1',
     minQty: p.get('minQty') ? Number(p.get('minQty')) : undefined,
     showUnavailable: p.get('all') === '1',
@@ -504,6 +583,7 @@ function filtersToParams(f: Filters): Record<string, string> {
   if (f.q) out.q = f.q;
   if (f.stores.size > 0) out.chains = [...f.stores].join(',');
   if (f.categories.size > 0) out.cats = [...f.categories].join(',');
+  if (f.brands.size > 0) out.brands = [...f.brands].join(',');
   if (f.bioOnly) out.bio = '1';
   if (typeof f.minQty === 'number') out.minQty = String(f.minQty);
   if (f.showUnavailable) out.all = '1';

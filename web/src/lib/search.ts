@@ -13,10 +13,17 @@ export interface Filters {
   q: string;
   stores: Set<Store>;
   categories: Set<string>;
+  /** Folded brand keys (lowercase, no diacritics) so "FELIX" / "Felix" / "felix" match. */
+  brands: Set<string>;
   bioOnly: boolean;
   minQty?: number;
   showUnavailable: boolean;
   sort: SortKey;
+}
+
+/** Stable key for brand grouping/equality (folds case + diacritics). */
+export function brandKey(brand: string | undefined): string {
+  return brand ? foldName(brand) : '';
 }
 
 export interface ResultEntry {
@@ -40,6 +47,7 @@ export function emptyFilters(): Filters {
     q: '',
     stores: new Set(),
     categories: new Set(),
+    brands: new Set(),
     bioOnly: false,
     showUnavailable: false,
     sort: 'unit-asc',
@@ -62,6 +70,7 @@ export function filterProducts(products: readonly Product[], f: Filters): Produc
   if (!f.showUnavailable) out = out.filter((p) => p.available);
   if (f.stores.size > 0) out = out.filter((p) => f.stores.has(p.store));
   if (f.categories.size > 0) out = out.filter((p) => f.categories.has(p.categoryCanonical ?? ''));
+  if (f.brands.size > 0) out = out.filter((p) => f.brands.has(brandKey(p.brand)));
   if (f.bioOnly) out = out.filter((p) => /\bbio\b/i.test(p.name));
   if (typeof f.minQty === 'number') out = out.filter((p) => (p.quantity ?? 0) >= f.minQty!);
   if (tokens.length > 0) {
