@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { PriceChart, type Series } from '../components/PriceChart.tsx';
+import { foldName, stripContainer } from '../lib/fold.ts';
 import { fmtCZK } from '../lib/format.ts';
 import { useCart } from '../lib/storage.ts';
 import type { Dataset, Product } from '../lib/types.ts';
@@ -296,7 +297,7 @@ function median(nums: number[]): number {
 }
 
 function computeMovers(products: readonly Product[]): Mover[] {
-  const out: Mover[] = [];
+  const all: Mover[] = [];
   for (const p of products) {
     if (p.history.length < 2) continue;
     // priceHistory is newest-first (assemble prepends each day's change), so
@@ -306,7 +307,7 @@ function computeMovers(products: readonly Product[]): Mover[] {
     if (oldest.price === newest.price) continue;
     const pctChange = ((newest.price - oldest.price) / oldest.price) * 100;
     if (Math.abs(pctChange) < 1) continue;
-    out.push({
+    all.push({
       product: p,
       oldPrice: oldest.price,
       newPrice: newest.price,
@@ -314,7 +315,25 @@ function computeMovers(products: readonly Product[]): Mover[] {
       daysCovered: p.history.length,
     });
   }
-  return out.sort((a, b) => a.pctChange - b.pctChange);
+
+  // Dedup so the table doesn't show the same logical product twice. Two layers:
+  // 1) Cross-chain matched groups → one row per groupId (cheapest member wins).
+  // 2) Within-chain SKU duplicates (same store + same folded+container-stripped
+  //    name + same qty/unit/pctChange) → one row.
+  const seen = new Map<string, Mover>();
+  for (const m of all) {
+    const p = m.product;
+    const key = p.groupId
+      ? `g:${p.groupId}`
+      : `c:${p.store}|${stripContainer(foldName(p.name))}|${p.quantity ?? ''}|${p.unit ?? ''}`;
+    const prev = seen.get(key);
+    // Keep the larger-absolute mover (more interesting), tiebreak on cheaper price.
+    if (!prev || Math.abs(m.pctChange) > Math.abs(prev.pctChange) ||
+        (Math.abs(m.pctChange) === Math.abs(prev.pctChange) && m.product.price < prev.product.price)) {
+      seen.set(key, m);
+    }
+  }
+  return [...seen.values()].sort((a, b) => a.pctChange - b.pctChange);
 }
 
 function maxHistoryDepth(products: readonly Product[]): number {
