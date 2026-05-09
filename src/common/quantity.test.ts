@@ -23,6 +23,15 @@ describe('parseQuantity', () => {
     assert.deepEqual(parseQuantity('Aviváž 1,35 l'), { unit: 'ml', quantity: 1350 });
   });
 
+  test('tolerates whitespace around the decimal separator', () => {
+    // Real Tesco/Billa data: "Hennessy Very Special 0, 35l" used to parse
+    // as 35l (35000 ml) because the parser took the right-hand digits when
+    // separated by a stray space. Now reads as 0.35 l = 350 ml.
+    assert.deepEqual(parseQuantity('Hennessy Very Special 0, 35l'), { unit: 'ml', quantity: 350 });
+    assert.deepEqual(parseQuantity('Coca-Cola 0, 33 l'), { unit: 'ml', quantity: 330 });
+    assert.deepEqual(parseQuantity('Voda 1, 5 l'), { unit: 'ml', quantity: 1500 });
+  });
+
   test('extracts piece counts', () => {
     assert.deepEqual(parseQuantity('Vejce 10 ks'), { unit: 'ks', quantity: 10 });
     assert.deepEqual(parseQuantity('Vdolečky 100 kusů'), { unit: 'ks', quantity: 100 });
