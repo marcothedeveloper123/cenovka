@@ -183,8 +183,8 @@ export function Data({ dataset }: Props): React.ReactElement {
           <Row label="Vygenerováno">{new Date(dataset.generatedAt).toLocaleString('cs')}</Row>
           <Row label="Schéma">v1 (canonical product)</Row>
           <Row label="Zdroj">
-            <a href="https://github.com/marco/cenovka" target="_blank" rel="noopener noreferrer" style={{ borderBottom: '1px solid currentColor' }}>
-              github.com/marco/cenovka
+            <a href="https://github.com/marcothedeveloper123/cenovka" target="_blank" rel="noopener noreferrer" style={{ borderBottom: '1px solid currentColor' }}>
+              github.com/marcothedeveloper123/cenovka
             </a>
           </Row>
           <Row label="Cesta v repu"><span className="mono">data/canonical/latest.json</span></Row>

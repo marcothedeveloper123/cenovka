@@ -115,8 +115,8 @@ export function About({ dataset }: Props): React.ReactElement {
           případné odvozeniny pod stejnou licencí.<br />
           Kód: <strong>MIT</strong> — bez ceremonie.<br />
           Issues, PR, návrhy:{' '}
-          <a href="https://github.com/marco/cenovka" target="_blank" rel="noopener noreferrer" style={{ borderBottom: '1px solid currentColor' }}>
-            github.com/marco/cenovka
+          <a href="https://github.com/marcothedeveloper123/cenovka" target="_blank" rel="noopener noreferrer" style={{ borderBottom: '1px solid currentColor' }}>
+            github.com/marcothedeveloper123/cenovka
           </a>
         </p>
       </Section>
