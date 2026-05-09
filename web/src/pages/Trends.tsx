@@ -1,7 +1,32 @@
 import { useMemo } from 'react';
+import { PriceChart, type Series } from '../components/PriceChart.tsx';
 import { fmtCZK } from '../lib/format.ts';
 import { useCart } from '../lib/storage.ts';
 import type { Dataset, Product } from '../lib/types.ts';
+
+const CATEGORY_LABELS: Record<string, string> = {
+  mlecne: 'Mléčné',
+  maso: 'Maso a uzeniny',
+  pecivo: 'Pečivo',
+  'ovoce-zelenina': 'Ovoce a zelenina',
+  mrazene: 'Mražené',
+  trvanlive: 'Trvanlivé',
+  napoje: 'Nápoje',
+  alkohol: 'Alkohol',
+  'kava-caj': 'Káva a čaj',
+  sladke: 'Sladké',
+  slane: 'Slané',
+  dite: 'Dítě',
+  drogerie: 'Drogerie',
+  domov: 'Domov',
+  pet: 'Mazlíčci',
+};
+
+// Pleasant categorical palette (8 hues, restated for sepia/dark theme legibility).
+const CATEGORY_PALETTE = [
+  '#1d6b3a', '#a83232', '#7a4ec0', '#c08000',
+  '#2a5fa0', '#b08a2c', '#5fae7c', '#3a3a8c',
+];
 
 interface Props {
   dataset: Dataset;
@@ -22,6 +47,7 @@ export function Trends({ dataset }: Props): React.ReactElement {
   const risers = useMemo(() => [...movers].filter((m) => m.pctChange > 0).reverse().slice(0, 20), [movers]);
   const historyDepth = useMemo(() => maxHistoryDepth(dataset.products), [dataset.products]);
   const cartTrend = useMemo(() => computeCartTrend(dataset, cart.items), [dataset, cart.items]);
+  const categoryIndex = useMemo(() => computeCategoryIndex(dataset.products), [dataset.products]);
 
   return (
     <div className="container" style={{ padding: '32px 28px 56px' }}>
@@ -43,6 +69,20 @@ export function Trends({ dataset }: Props): React.ReactElement {
               <BasketStrip points={cartTrend.points} />
               <p style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 8 }}>
                 Suma cen položek z košíku v nejlevnějším řetězci za každý den, kdy máme data.
+              </p>
+            </Section>
+          )}
+
+          {categoryIndex.length > 0 && (
+            <Section title={`Inflace za kategorii (index = 100 první den)`}>
+              <PriceChart
+                series={categoryIndex}
+                yLabel="index"
+                height={260}
+              />
+              <p style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 8 }}>
+                Medián jednotkové ceny v kategorii (Kč / 100 g, 100 ml, ks) normalizovaný na 100
+                pro první den dat. Linka nad 100 = kategorie zdražila, pod 100 = zlevnila.
               </p>
             </Section>
           )}
@@ -192,6 +232,64 @@ function BasketStrip({ points }: { points: { date: string; total: number }[] }):
       </svg>
     </div>
   );
+}
+
+/**
+ * Per-category inflation index: median unit price per day, normalized to 100
+ * on the earliest day with data. Restricted to canonical categories with at
+ * least 50 products and at least 2 days of data — anything narrower is too
+ * noisy to be a useful aggregate.
+ */
+function computeCategoryIndex(products: readonly Product[]): Series[] {
+  // Group products by canonical category, then collect (date, unitPrice)
+  // points across each product's priceHistory.
+  type Bucket = { dates: Map<string, number[]> };
+  const byCategory = new Map<string, Bucket>();
+  for (const p of products) {
+    if (!p.categoryCanonical || p.unit == null || p.quantity == null || p.quantity <= 0) continue;
+    const per = p.unit === 'g' || p.unit === 'ml' ? 100 / p.quantity : 1 / p.quantity;
+    let bucket = byCategory.get(p.categoryCanonical);
+    if (!bucket) byCategory.set(p.categoryCanonical, (bucket = { dates: new Map() }));
+    for (const h of p.history) {
+      const unitPrice = h.price * per;
+      let arr = bucket.dates.get(h.date);
+      if (!arr) bucket.dates.set(h.date, (arr = []));
+      arr.push(unitPrice);
+    }
+  }
+
+  const series: Series[] = [];
+  let colourIdx = 0;
+  // Sort categories by total product weight so the legend order is stable
+  // and the most common categories get the most distinct colours.
+  const ranked = [...byCategory.entries()]
+    .map(([cat, b]) => ({ cat, b, n: [...b.dates.values()].reduce((s, a) => s + a.length, 0) }))
+    .sort((a, b) => b.n - a.n)
+    .filter((r) => r.n >= 50);
+  for (const { cat, b } of ranked) {
+    const sortedDates = [...b.dates.keys()].sort();
+    if (sortedDates.length < 2) continue;
+    const baseline = median(b.dates.get(sortedDates[0]!)!);
+    if (!baseline) continue;
+    const points = sortedDates.map((d) => ({
+      date: d,
+      price: (median(b.dates.get(d)!) / baseline) * 100,
+    }));
+    series.push({
+      label: CATEGORY_LABELS[cat] ?? cat,
+      color: CATEGORY_PALETTE[colourIdx % CATEGORY_PALETTE.length]!,
+      points,
+    });
+    colourIdx += 1;
+  }
+  return series;
+}
+
+function median(nums: number[]): number {
+  if (nums.length === 0) return 0;
+  const sorted = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
 }
 
 function computeMovers(products: readonly Product[]): Mover[] {

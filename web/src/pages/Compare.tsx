@@ -1,8 +1,20 @@
 import { useMemo } from 'react';
+import { PriceChart, type Series } from '../components/PriceChart.tsx';
 import { foldName, stripContainer } from '../lib/fold.ts';
 import { fmtCZK, nameTokens, sharedTokenCount } from '../lib/format.ts';
 import { navigate } from '../lib/route.ts';
 import type { Dataset, MatchGroup, Product } from '../lib/types.ts';
+
+const CHAIN_COLORS: Record<string, string> = {
+  tesco: '#1d6b3a',
+  rohlik: '#a83232',
+  kosik: '#b08a2c',
+  billa: '#5fae7c',
+  penny: '#c08000',
+  globus: '#7a4ec0',
+  kaufland: '#3a3a8c',
+  lidl: '#1d6b3a',
+};
 
 type Scope = 'group' | 'bucket' | 'category';
 
@@ -179,6 +191,23 @@ function GroupView({ members }: { members: Product[] }): React.ReactElement {
         <Stat label="NEJLEVNĚJI" value={fmtCZK(cheapest.price, 1)} sub={cheapest.storeName} />
         <Stat label="NEJDRAŽEJI" value={fmtCZK(priciest.price, 1)} sub={priciest.storeName} />
       </div>
+
+      <section style={{ marginBottom: 32 }}>
+        <h2 className="display" style={{ fontSize: 18, margin: '0 0 12px', borderTop: '2px solid var(--ink)', paddingTop: 12 }}>
+          Vývoj ceny napříč řetězci
+        </h2>
+        <PriceChart
+          series={members
+            .filter((p) => p.history.length > 0)
+            .map((p) => ({
+              label: p.storeName,
+              color: CHAIN_COLORS[p.store] ?? 'var(--ink-2)',
+              points: [...p.history].sort((a, b) => a.date.localeCompare(b.date)),
+            }))}
+          yLabel="Kč"
+          height={220}
+        />
+      </section>
 
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: 12 }}>
         {members.map((p, i) => {

@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { PriceChart, type Series } from '../components/PriceChart.tsx';
 import { fmtCZK } from '../lib/format.ts';
 import { useCart, useFavorites } from '../lib/storage.ts';
 import type { Dataset, Product } from '../lib/types.ts';
@@ -120,6 +121,14 @@ export function ProductDetail({ dataset, productId }: Props): React.ReactElement
               </a>
             </div>
           </div>
+
+          <Section title="Vývoj ceny">
+            <PriceChart
+              series={buildHistorySeries(product, sameProduct)}
+              yLabel="Kč"
+              height={200}
+            />
+          </Section>
 
           {sameProduct.length >= 1 && (
             <Section title={`Stejný produkt v ${sameProduct.length + 1} řetězcích`} more={product.groupId ? `#/c/${product.groupId}` : undefined}>
@@ -308,6 +317,30 @@ function cheaperInCategoryMembers(dataset: Dataset, product: Product): Product[]
         p.unitPrice < product.unitPrice!,
     )
     .sort((a, b) => (a.unitPrice ?? Infinity) - (b.unitPrice ?? Infinity));
+}
+
+// Stable series colours per chain so the same chain always lines up to the
+// same colour on the chart and in any future legend pinning.
+const CHAIN_COLORS: Record<string, string> = {
+  tesco: '#1d6b3a',
+  rohlik: '#a83232',
+  kosik: '#b08a2c',
+  billa: '#5fae7c',
+  penny: '#c08000',
+  globus: '#7a4ec0',
+  kaufland: '#3a3a8c',
+  lidl: '#1d6b3a',
+};
+
+function buildHistorySeries(product: Product, sameProduct: readonly Product[]): Series[] {
+  const all = [product, ...sameProduct];
+  return all
+    .filter((p) => p.history.length > 0)
+    .map((p) => ({
+      label: p.storeName,
+      color: CHAIN_COLORS[p.store] ?? 'var(--ink-2)',
+      points: [...p.history].sort((a, b) => a.date.localeCompare(b.date)),
+    }));
 }
 
 function categoryLabel(c: string | undefined): string | undefined {
