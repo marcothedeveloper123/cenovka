@@ -20,7 +20,10 @@ const RUNNERS: Runner[] = [
   { store: 'rohlik', run: (limit, onProduct) => scrapeRohlik({ limit, onProduct }) },
   { store: 'kosik', run: (limit, onProduct) => scrapeKosik({ limit, onProduct }) },
   { store: 'billa', run: (limit, onProduct) => scrapeBilla({ limit, onProduct }) },
-  { store: 'penny', run: (limit, onProduct) => scrapePenny({ limit, onProduct }) },
+  // Penny removed from default rotation — their sitemap.xml only exposes
+  // ~26 products. Scraper still works via --only penny if Penny ever fixes
+  // their index. (REWE Nuxt mapping still used by Billa.)
+  // { store: 'penny', run: (limit, onProduct) => scrapePenny({ limit, onProduct }) },
   { store: 'globus', run: (limit, onProduct) => scrapeGlobus({ limit, onProduct }) },
   { store: 'kaufland', run: (limit, onProduct) => scrapeKaufland({ limit, onProduct }) },
 ];

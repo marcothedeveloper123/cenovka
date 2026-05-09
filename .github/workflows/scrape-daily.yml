@@ -22,7 +22,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        chain: [tesco, rohlik, kosik, billa, penny, globus]
+        # Penny dropped: their sitemap.xml exposes only ~26 products and we
+        # haven't found another index. REWE Nuxt scraper still works for Billa.
+        chain: [tesco, rohlik, kosik, billa, globus]
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
