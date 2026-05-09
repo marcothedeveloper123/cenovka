@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { gzipSync } from 'node:zlib';
+import { gunzipSync, gzipSync } from 'node:zlib';
 import { assemble } from './common/assemble-core.ts';
 import type { CanonicalDataset, Product, Store } from './common/types.ts';
 import { cleanProduct } from './common/validate.ts';
@@ -45,6 +45,15 @@ async function readChainFile(store: Store, date: string): Promise<Product[]> {
 }
 
 async function readPriorCanonical(): Promise<CanonicalDataset | null> {
+  // The committed form is `latest.json.gz` (8 MB vs 53). The uncompressed
+  // sibling is gitignored, so it's only present when assemble has run
+  // locally already. Try both — gz first since it's the source of truth.
+  try {
+    const buf = await readFile(`${LATEST_PATH}.gz`);
+    return JSON.parse(gunzipSync(buf).toString('utf8')) as CanonicalDataset;
+  } catch {
+    /* fall through */
+  }
   try {
     const body = await readFile(LATEST_PATH, 'utf8');
     return JSON.parse(body) as CanonicalDataset;
