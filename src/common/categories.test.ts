@@ -38,6 +38,12 @@ describe('classifyCategory', () => {
     assert.equal(classifyCategory('Nápoje > Limonády', 'tesco'), 'napoje');
     assert.equal(classifyCategory('Nápoje > Voda', 'tesco'), 'napoje');
     assert.equal(classifyCategory('Energy nápoje > Limonády > Nápoje', 'rohlik'), 'napoje');
+    // Bug: "Top Topic Original limonáda" was classified alkohol because the
+    // Rohlík breadcrumb has "Hroznové víno" (grape flavour name) and 'vino'
+    // prefix-matched. Limonády in the same path now wins.
+    assert.equal(classifyCategory('Hroznové víno > Limonády > Limonády a energy > Nápoje', 'rohlik'), 'napoje');
+    // Tesco non-alc beer: should be napoje, not alkohol.
+    assert.equal(classifyCategory('Nápoje > Pivo > Nealkoholické pivo', 'tesco'), 'napoje');
   });
 
   test('Globus combined alc+nealc bucket → napoje (ambiguous, safer default)', () => {

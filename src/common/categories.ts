@@ -30,13 +30,18 @@ interface CanonicalDef {
 const TAXONOMY: CanonicalDef[] = [
   // Frozen first — "Mražená zelenina" should be mrazene, not ovoce-zelenina.
   { id: 'mrazene', keywords: ['mrazene', 'mrazena', 'plant based', 'plant-based'] },
+  // napoje BEFORE alkohol so non-alc keywords (limonad, energy, nealko, dzus,
+  // voda, minerali) win when they coexist with alcohol-flavour names
+  // (e.g. Rohlík "Hroznové víno > Limonády" or Tesco "Nealkoholické pivo").
+  // Note: 'napoj' (umbrella token) is intentionally NOT here — it matches
+  // every "Nápoje > …" path including alcohol.
+  { id: 'napoje', keywords: ['limonad', 'dzus', 'voda', 'minerali', 'nealko', 'energy', 'cidr', 'cider', 'ledov'] },
   { id: 'kava-caj', keywords: ['kava', 'caj'] },
-  { id: 'alkohol', keywords: ['lihovin', 'destilat', 'pivo', 'vino', 'sekt', 'sumive', 'sumiva', 'whisky', 'whiskey', 'rum', 'gin', 'vodka', 'tequila', 'liker', 'absinth', 'cidr', 'cider', 'brandy', 'koniak', 'aperitiv', 'becherovka', 'fernet', 'becher', 'alkohol'] },
+  { id: 'alkohol', keywords: ['lihovin', 'destilat', 'pivo', 'vino', 'sekt', 'sumive', 'sumiva', 'whisky', 'whiskey', 'rum', 'gin', 'vodka', 'tequila', 'liker', 'absinth', 'brandy', 'koniak', 'aperitiv', 'becherovka', 'fernet', 'becher', 'alkohol'] },
   { id: 'mlecne', keywords: ['mlecne', 'mleko', 'jogurt', 'syr', 'tvaroh', 'maslo'] },
   { id: 'maso', keywords: ['maso', 'uzeniny', 'lahudk', 'ryby'] },
   { id: 'pecivo', keywords: ['pecivo', 'pekarn', 'chleb'] },
   { id: 'ovoce-zelenina', keywords: ['ovoce', 'zelenina'] },
-  { id: 'napoje', keywords: ['napoj', 'limonad', 'dzus', 'voda', 'minerali'] },
   { id: 'sladke', keywords: ['sladk', 'cokolad', 'cukrovinky', 'susenk'] },
   { id: 'slane', keywords: ['slane', 'chips', 'orisk', 'snack'] },
   { id: 'dite', keywords: ['dite', 'deti', 'kojen'] },
