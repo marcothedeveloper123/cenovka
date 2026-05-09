@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { assemble } from './common/assemble-core.ts';
+import { readScrapeLog, recordScrapeDay, writeScrapeLog } from './common/scrape-log.ts';
 import type { CanonicalDataset, Product, Store } from './common/types.ts';
 import { cleanProduct } from './common/validate.ts';
 
@@ -42,6 +43,18 @@ async function readChainFile(store: Store, date: string): Promise<Product[]> {
     }
   }
   return out;
+}
+
+/** Count entries in `data/raw/<store>/<date>.errors.json` if present. */
+async function countErrors(store: Store, date: string): Promise<number> {
+  const path = join(RAW_DIR, store, `${date}.errors.json`);
+  try {
+    const body = await readFile(path, 'utf8');
+    const arr = JSON.parse(body) as unknown[];
+    return Array.isArray(arr) ? arr.length : 0;
+  } catch {
+    return 0;
+  }
 }
 
 async function readPriorCanonical(): Promise<CanonicalDataset | null> {
@@ -101,6 +114,20 @@ async function main(): Promise<void> {
     join(CANONICAL_DIR, `metrics-${date}.json`),
     JSON.stringify(metrics, null, 2),
   );
+
+  // Append today's per-chain scrape outcome. Persisted across days so the SPA
+  // can show explicit "did this chain scrape today" instead of inferring from
+  // priceHistory churn.
+  const scrapeLogPath = join(CANONICAL_DIR, 'coverage.json.gz');
+  const scrapeLog = await readScrapeLog(scrapeLogPath);
+  for (const store of STORES) {
+    const m = metrics.perChain[store];
+    const products = m?.today ?? 0;
+    if (products === 0) continue; // skip chains we didn't try this run
+    const errors = await countErrors(store, date);
+    recordScrapeDay(scrapeLog, store, date, { products, errors });
+  }
+  await writeScrapeLog(scrapeLogPath, scrapeLog);
 
   console.log(`[assemble] ${dataset.products.length} products written to ${LATEST_PATH}`);
   console.log(

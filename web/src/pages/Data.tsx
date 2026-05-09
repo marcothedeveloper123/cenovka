@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { fmtCZK } from '../lib/format.ts';
-import type { Dataset, Product, Store } from '../lib/types.ts';
+import type { Dataset, Product, ScrapeLog, Store } from '../lib/types.ts';
 
 const STORE_NAMES: Record<Store, string> = {
   tesco: 'Tesco',
@@ -19,7 +19,12 @@ interface Props {
 
 export function Data({ dataset }: Props): React.ReactElement {
   const stats = useMemo(() => computeStats(dataset.products), [dataset.products]);
-  const coverage = useMemo(() => computeFreshness(dataset.products), [dataset.products]);
+  // Prefer the explicit scrape log committed by the cron; fall back to the
+  // priceHistory-derived proxy when the log isn't available (older datasets).
+  const coverage = useMemo(
+    () => (dataset.scrapeLog ? fromScrapeLog(dataset.scrapeLog) : computeFreshness(dataset.products)),
+    [dataset.scrapeLog, dataset.products],
+  );
   const groupedCount = dataset.groups.reduce((s, g) => s + g.productKeys.length, 0);
   const groupCoverage = dataset.products.length > 0 ? (groupedCount / dataset.products.length) * 100 : 0;
 
@@ -125,9 +130,9 @@ export function Data({ dataset }: Props): React.ReactElement {
           Status sběru dat (posledních {coverage.dates.length} dní)
         </h2>
         <p style={{ fontSize: 13, color: 'var(--ink-3)', margin: '0 0 12px' }}>
-          Počet produktů, kterým se v ten den změnila cena (proxy pro „byl scrape úspěšný?“).
-          Prázdná buňka = scrape selhal nebo se prostě nic nezměnilo. Při ~20k produktech na řetězec
-          je nulový den téměř jistě selhání.
+          {dataset.scrapeLog
+            ? 'Počet produktů stažených z webu řetězce ten den. Prázdná buňka = scrape ten den neproběhl nebo selhal úplně.'
+            : 'Počet produktů, kterým se v ten den změnila cena (proxy — kompletní log scrapů zatím není v datech).'}
         </p>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -259,13 +264,33 @@ interface StoreStats {
 interface FreshnessRow {
   store: Store;
   byDate: Map<string, number>;
-  /** Total available products in this chain (used to size "did the scrape look healthy?"). */
+  /** Used to size "did the scrape look healthy?" — chain catalog size. */
   expectedPerDay: number;
 }
 interface Freshness {
-  /** Up to last 14 days of unique dates seen in priceHistory, ascending. */
+  /** Up to last 14 days of dates, ascending. */
   dates: string[];
   rows: FreshnessRow[];
+}
+
+function fromScrapeLog(log: ScrapeLog): Freshness {
+  const dateSet = new Set<string>();
+  const rows: FreshnessRow[] = [];
+  for (const [storeKey, days] of Object.entries(log.perChain)) {
+    if (!days) continue;
+    const store = storeKey as Store;
+    const byDate = new Map<string, number>();
+    let max = 0;
+    for (const [d, cell] of Object.entries(days)) {
+      byDate.set(d, cell.products);
+      dateSet.add(d);
+      if (cell.products > max) max = cell.products;
+    }
+    rows.push({ store, byDate, expectedPerDay: max });
+  }
+  rows.sort((a, b) => b.expectedPerDay - a.expectedPerDay);
+  const dates = [...dateSet].sort().slice(-14);
+  return { dates, rows };
 }
 
 function computeFreshness(products: readonly Product[]): Freshness {
@@ -291,12 +316,12 @@ function computeFreshness(products: readonly Product[]): Freshness {
 
 function freshColor(n: number, expected: number): string {
   if (n === 0) return 'var(--up)';
-  // Empirically only ~1% of products change price on a typical day. A healthy
-  // scrape over a chain with N products produces ~0.01N changes. Anything
-  // above 0.005 * N is probably a successful scrape; below is suspicious.
+  // Healthy = within 5% of the chain's typical catalog size. Below ⅔ of
+  // typical = suspicious (partial scrape). Zero = failed.
   const ratio = expected > 0 ? n / expected : 0;
-  if (ratio >= 0.005) return 'var(--accent)';
-  if (ratio > 0) return 'var(--ink-3)';
+  if (ratio >= 0.95) return 'var(--accent)';
+  if (ratio >= 0.66) return 'var(--ink-2)';
+  if (ratio > 0) return 'var(--up)';
   return 'var(--up)';
 }
 

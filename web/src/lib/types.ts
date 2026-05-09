@@ -52,4 +52,17 @@ export interface Dataset {
   generatedAt: string;
   products: Product[];
   groups: MatchGroup[];
+  scrapeLog?: ScrapeLog;
+}
+
+export interface ScrapeDay {
+  products: number;
+  errors: number;
+  note?: string;
+}
+
+export interface ScrapeLog {
+  schema: number;
+  lastUpdated: string;
+  perChain: Partial<Record<Store, Record<string, ScrapeDay>>>;
 }
