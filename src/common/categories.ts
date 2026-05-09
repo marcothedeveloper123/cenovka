@@ -53,21 +53,36 @@ export function classifyCategory(
 ): CanonicalCategory | undefined {
   if (!raw) return undefined;
   const folded = fold(raw);
-  // Globus has a single combined "napoje-alkoholicke-a-nealkoholicke" bucket
-  // — alcohol AND mineral water + non-alc beer mixed. The breadcrumb alone
-  // can't tell them apart, so default the whole batch to napoje (safer than
-  // wrongly tagging Evian as alkohol). Real classification would need to
-  // walk the product name, which we don't do here.
+  // Globus combined "napoje-alkoholicke-a-nealkoholicke" mixes Becherovka
+  // with Evian — default to napoje rather than misclassify mineral water
+  // as alkohol. Real split would need to walk product names.
   if (folded.includes('alkoholicke') && folded.includes('nealkoholicke')) {
     return 'napoje';
   }
-  // Walk every segment (folded full path) and pick the first taxonomy hit.
-  // pickRoot used to look at one segment only — Tesco "Nápoje > Pivo >
-  // Lahvové" matched napoje and never reached alkohol.
+  // Word-tokenise once: split on any non-letter/digit run, drop empties.
+  // We need word-boundary matching because raw substring is far too loose
+  // — short Czech alc keywords (gin, rum, vino) match inside common Czech
+  // words like 'original', 'potravinove', etc.
+  const tokens = folded.split(/[^a-z0-9]+/).filter(Boolean);
   for (const def of TAXONOMY) {
-    if (def.keywords.some((kw) => folded.includes(kw))) return def.id;
+    if (matchesAny(tokens, def.keywords)) return def.id;
   }
   return undefined;
+}
+
+/**
+ * A keyword matches when it equals a token, OR is a prefix of a token
+ * (so 'sumive' matches 'sumivave', 'pivo' matches 'piva'/'pivovar', etc.).
+ * Prefix avoids needing to enumerate every Czech declension while still
+ * preventing 'gin' from matching inside 'original'.
+ */
+function matchesAny(tokens: readonly string[], keywords: readonly string[]): boolean {
+  for (const kw of keywords) {
+    for (const t of tokens) {
+      if (t === kw || t.startsWith(kw)) return true;
+    }
+  }
+  return false;
 }
 
 function fold(s: string): string {

@@ -46,6 +46,15 @@ describe('classifyCategory', () => {
     assert.equal(classifyCategory('napoje-alkoholicke-a-nealkoholicke', 'globus'), 'napoje');
   });
 
+  test('keyword tokens do not bleed into longer Czech words', () => {
+    // 'gin' must not match 'original' (o-b-original-super-tampony-...).
+    // 'vino' must not match 'potravinove' (Alufix Sáčky → potravinove-folie).
+    // 'rum' must not match common substrings.
+    assert.equal(classifyCategory('p > o-b-original-super-tampony-...', 'globus'), undefined);
+    assert.equal(classifyCategory('domacnost-a-zahrada > kuchynske-potreby > skladovani-potravin > potravinove-folie-a-sacky', 'globus'), 'domov');
+    assert.equal(classifyCategory('Domácnost a zahrada > Kuchyňské potřeby > Pečicí papír, alobal, fólie > Potravinové fólie', 'kosik'), 'domov');
+  });
+
   test('Košík breadcrumbs (root-first)', () => {
     assert.equal(classifyCategory('Mléčné a chlazené > Jogurty', 'kosik'), 'mlecne');
     assert.equal(classifyCategory('Drogerie a kosmetika > Šampony', 'kosik'), 'drogerie');
