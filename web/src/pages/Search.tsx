@@ -494,6 +494,11 @@ function Row({
           <div className="num display" style={{ fontSize: 22, lineHeight: 1.2 }}>
             {fmtCZK(rep.price)}
           </div>
+          {rep.history.length > 0 && (
+            <div className="num" style={{ fontSize: 10, color: 'var(--ink-4)' }}>
+              od {fmtShortDate(rep.history[0]!.date)}
+            </div>
+          )}
           {hasAlternates && (
             <div className="num" style={{ fontSize: 11, color: 'var(--ink-3)' }}>
               až {fmtCZK(priciest.price)} jinde
@@ -596,6 +601,11 @@ function Row({
       ) : null}
     </li>
   );
+}
+
+function fmtShortDate(iso: string): string {
+  const [, m, d] = iso.split('-');
+  return `${Number(d)}. ${Number(m)}.`;
 }
 
 function filtersFromRoute(route: Route): Filters {

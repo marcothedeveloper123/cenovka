@@ -9,6 +9,8 @@ export interface KosikApiResponse {
     unit?: string;
     productQuantity?: { value?: number; unit?: string };
     mainCategory?: { name?: string };
+    /** Object when in stock, null for delisted/phantom items still served by the slug API. */
+    availability?: unknown;
   };
   breadcrumbs?: Array<{ name: string }>;
 }
@@ -29,6 +31,10 @@ export function extractKosikSlug(url: string): string | null {
 export function mapKosikApi(data: KosikApiResponse, url: string): Product | null {
   const p = data.product;
   if (!p || typeof p.id !== 'number' || typeof p.price !== 'number') return null;
+  // Košík's slug API returns 200 even for delisted/phantom products. Their
+  // search UI hides those (and so should we). The signal is `availability`:
+  // it's an object for in-stock items, null for delisted ones.
+  if (p.availability == null) return null;
   return {
     store: 'kosik',
     id: String(p.id),
