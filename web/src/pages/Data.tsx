@@ -19,6 +19,7 @@ interface Props {
 
 export function Data({ dataset }: Props): React.ReactElement {
   const stats = useMemo(() => computeStats(dataset.products), [dataset.products]);
+  const coverage = useMemo(() => computeFreshness(dataset.products), [dataset.products]);
   const groupedCount = dataset.groups.reduce((s, g) => s + g.productKeys.length, 0);
   const groupCoverage = dataset.products.length > 0 ? (groupedCount / dataset.products.length) * 100 : 0;
 
@@ -119,6 +120,56 @@ export function Data({ dataset }: Props): React.ReactElement {
         </p>
       </section>
 
+      <section style={{ marginBottom: 40 }}>
+        <h2 className="display" style={{ fontSize: 20, margin: '0 0 12px', borderTop: '2px solid var(--ink)', paddingTop: 12 }}>
+          Status sběru dat (posledních {coverage.dates.length} dní)
+        </h2>
+        <p style={{ fontSize: 13, color: 'var(--ink-3)', margin: '0 0 12px' }}>
+          Počet produktů, kterým se v ten den změnila cena (proxy pro „byl scrape úspěšný?“).
+          Prázdná buňka = scrape selhal nebo se prostě nic nezměnilo. Při ~20k produktech na řetězec
+          je nulový den téměř jistě selhání.
+        </p>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--rule-2)', textAlign: 'left' }}>
+                <th style={{ padding: '8px 12px 8px 0' }}>Řetězec</th>
+                {coverage.dates.map((d) => (
+                  <th key={d} style={{ padding: '8px', textAlign: 'right', minWidth: 64 }}>
+                    {fmtShortDate(d)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {coverage.rows.map((row) => (
+                <tr key={row.store} style={{ borderBottom: '1px solid var(--rule)' }}>
+                  <td style={{ padding: '8px 12px 8px 0', fontWeight: 500 }}>
+                    {STORE_NAMES[row.store]}
+                  </td>
+                  {coverage.dates.map((d) => {
+                    const n = row.byDate.get(d) ?? 0;
+                    return (
+                      <td
+                        key={d}
+                        className="num"
+                        style={{
+                          padding: '8px',
+                          textAlign: 'right',
+                          color: freshColor(n, row.expectedPerDay),
+                        }}
+                      >
+                        {n === 0 ? '—' : n.toLocaleString('cs')}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
       <section>
         <h2 className="display" style={{ fontSize: 20, margin: '0 0 12px', borderTop: '2px solid var(--ink)', paddingTop: 12 }}>
           Metadata
@@ -203,6 +254,55 @@ interface StoreStats {
   eanPct: number;
   catPct: number;
   medianPrice: number;
+}
+
+interface FreshnessRow {
+  store: Store;
+  byDate: Map<string, number>;
+  /** Total available products in this chain (used to size "did the scrape look healthy?"). */
+  expectedPerDay: number;
+}
+interface Freshness {
+  /** Up to last 14 days of unique dates seen in priceHistory, ascending. */
+  dates: string[];
+  rows: FreshnessRow[];
+}
+
+function computeFreshness(products: readonly Product[]): Freshness {
+  // For each chain, count how many products had a priceHistory entry on each date.
+  const perStore = new Map<Store, { byDate: Map<string, number>; total: number }>();
+  const allDates = new Set<string>();
+  for (const p of products) {
+    if (!p.available) continue;
+    let bucket = perStore.get(p.store);
+    if (!bucket) perStore.set(p.store, (bucket = { byDate: new Map(), total: 0 }));
+    bucket.total += 1;
+    for (const h of p.history) {
+      bucket.byDate.set(h.date, (bucket.byDate.get(h.date) ?? 0) + 1);
+      allDates.add(h.date);
+    }
+  }
+  const dates = [...allDates].sort().slice(-14);
+  const rows: FreshnessRow[] = [...perStore.entries()]
+    .map(([store, b]) => ({ store, byDate: b.byDate, expectedPerDay: b.total }))
+    .sort((a, b) => b.expectedPerDay - a.expectedPerDay);
+  return { dates, rows };
+}
+
+function freshColor(n: number, expected: number): string {
+  if (n === 0) return 'var(--up)';
+  // Empirically only ~1% of products change price on a typical day. A healthy
+  // scrape over a chain with N products produces ~0.01N changes. Anything
+  // above 0.005 * N is probably a successful scrape; below is suspicious.
+  const ratio = expected > 0 ? n / expected : 0;
+  if (ratio >= 0.005) return 'var(--accent)';
+  if (ratio > 0) return 'var(--ink-3)';
+  return 'var(--up)';
+}
+
+function fmtShortDate(iso: string): string {
+  const [, m, d] = iso.split('-');
+  return `${Number(d)}.${Number(m)}.`;
 }
 
 function computeStats(products: readonly Product[]): { byStore: StoreStats[]; total: number; totalAvailable: number; medianAll: number } {
