@@ -182,13 +182,16 @@ function Sparkline({ history, kind }: { history: { date: string; price: number }
   if (history.length < 2) return <span style={{ color: 'var(--ink-4)', fontSize: 12 }}>—</span>;
   const W = 70;
   const H = 22;
-  const prices = history.map((h) => h.price);
+  // history is newest-first; chart x-axis is left=earliest, right=now, so
+  // sort ascending by date before plotting.
+  const sorted = [...history].sort((a, b) => a.date.localeCompare(b.date));
+  const prices = sorted.map((h) => h.price);
   const min = Math.min(...prices);
   const max = Math.max(...prices);
   const range = max - min || 1;
-  const points = history
+  const points = sorted
     .map((h, i) => {
-      const x = (i / (history.length - 1)) * W;
+      const x = (i / (sorted.length - 1)) * W;
       const y = H - ((h.price - min) / range) * H;
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     })
@@ -296,8 +299,10 @@ function computeMovers(products: readonly Product[]): Mover[] {
   const out: Mover[] = [];
   for (const p of products) {
     if (p.history.length < 2) continue;
-    const oldest = p.history[0]!;
-    const newest = p.history[p.history.length - 1]!;
+    // priceHistory is newest-first (assemble prepends each day's change), so
+    // history[0] is "today" and history[last] is "earliest known".
+    const newest = p.history[0]!;
+    const oldest = p.history[p.history.length - 1]!;
     if (oldest.price === newest.price) continue;
     const pctChange = ((newest.price - oldest.price) / oldest.price) * 100;
     if (Math.abs(pctChange) < 1) continue;
