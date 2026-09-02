@@ -35,3 +35,33 @@ Open-source non-commercial price tracker for CZ grocery chains, modelled on heis
 - Don't drop disappeared products from canonical — mark `available: false` and keep history.
 - Don't add Wolt/foodora to MVP. Per-venue fragmentation + price distortion makes the data semantically different from direct e-shop scrapes.
 - Don't scrape Globus (robots.txt forbids products). Don't scrape Kaufland yet (Cloudflare 403; revisit only with headless browser + residential proxies).
+
+## CI / pipeline
+- **Check the calendar before debugging the job.** Data-commit dates clustering at the start of
+  each month, plus 6–9 second job failures in between, means exhausted Actions minutes, not a
+  broken scraper. `gh run list` conclusions against dates finds it in one command.
+- **Carry `timeout-minutes` in the matrix entry**, not on the job. One shared value lets the
+  slowest chain set the cost of every other chain's failure mode. A `plan` job that emits the
+  matrix as JSON (`fromJson(needs.plan.outputs.matrix)`) makes the daily/weekly split and the
+  per-chain budget explicit in one place.
+- **Zero-byte output after a full timeout is a hang, not slowness.** Judge scrapers by artefact
+  size, not duration, before reaching for a longer timeout.
+- **Check `git rev-list --left-right --count HEAD...origin/main` when orienting.** Unpushed
+  commits are invisible to CI; a fix that exists only locally is a fix that never shipped.
+- **Binary conflicts during rebase already hold the upstream side in the worktree.** For
+  regenerable build output (`data/canonical/*.gz`), `git add <path>` resolves correctly with no
+  `--ours` needed. Verify with `git rev-parse HEAD:<path>` vs `origin/main:<path>`.
+
+## Forecasting (settled — don't re-litigate)
+- **TimesFM ties with "repeat last value" on grocery prices** at every context length from 1 to
+  16 years, and accuracy plateaus around 8 years. It only beats naive when given the farm-gate or
+  producer price of the same commodity, with `xreg_mode='xreg + timesfm'` (the other mode,
+  `'timesfm + xreg'`, is dramatically *worse* than using no covariates at all).
+- **Energy, fuel and fertiliser covariates add nothing.** Retrospective regression on 136 months
+  shows the farm-gate price is already a sufficient statistic for the whole upstream chain;
+  adding it explains +0.13 adjusted R² while energy and ag-inputs each contribute ≈0.
+- **ČSÚ DataStat API**: `data.csu.gov.cz/api/dotaz/v1/data/sady/{kod}` returns JSON-stat 2.0, but
+  serves only one default slice. Historical and alternate-frequency data lives behind *named
+  selections* — find them via `api/katalog/v1/vybery`, then fetch
+  `api/dotaz/v1/data/vybery/{vyberKod}?format=JSON_STAT`. The `data.csu.gov.cz/datastat/...` URL
+  is the Angular shell, not data.

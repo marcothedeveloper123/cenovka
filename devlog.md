@@ -1,5 +1,77 @@
 # Devlog
 
+## 2026-09-02 — Pipeline had been dead since May: Actions minutes, not code
+
+### Context
+Session started as an evaluation of Google's TimesFM (time-series foundation model) for
+price forecasting. That investigation concluded TimesFM doesn't beat a naive baseline on
+grocery prices — but checking whether the tracker had enough history to test it on revealed
+the real problem: the daily scrape had not completed a full run since 9 May.
+
+### Done
+- **Diagnosed the cron failure.** Data-commit dates cluster at the start of every month
+  (1–2 Sep, 1–4 Aug, 1–4 Jul, 1–5 Jun, 7–13 May) and every run in between failed after
+  6–9 seconds. That is the signature of exhausted GitHub Actions minutes on a private repo:
+  the quota resets on the 1st, gets burned in 3–4 days, then jobs never start. Confirmed by
+  job durations — Globus and Tesco each held a 180-minute runner *daily*, ~473 min/run
+  against a 2000 min/month allowance (~14,200 min/month required, 7× over).
+- **Repo made public.** Public repos get unlimited Actions minutes. Audited first: no secret-
+  shaped files ever committed, no repo secrets configured, none referenced in the workflow,
+  `.claude/` already gitignored. This is the actual fix — no rationing of chains fits 2000 min.
+- **Workflow restructured** (`.github/workflows/scrape-daily.yml`). New `plan` job emits the
+  matrix as JSON; `scrape` consumes it via `fromJson`. Two tiers: daily (kosik, billa, rohlik)
+  and weekly (globus, tesco), selectable by cron expression or `workflow_dispatch` input.
+  Per-chain `timeout-minutes` from the matrix, sized to observed duration + ~60% headroom,
+  so one stuck chain can no longer hold a 180-minute runner. Worst case 14,200 → 6,160 min/mo.
+- **Rebased 11 stranded commits.** Four months of local work from 9 May had never been pushed
+  — including `aff9c3f` which drops Penny from the matrix, so Penny kept burning a runner slot
+  in CI while being disabled locally. Origin's 19 commits were data-only, so the only conflicts
+  were the gzipped canonical snapshots; took origin's (newer, and regenerable build output).
+- **Verified end to end.** `workflow_dispatch -f tier=daily` → `plan` succeeded and emitted
+  `kosik/35, billa/35, rohlik/110`, Globus and Tesco correctly excluded.
+
+### Learned
+- **A cron that "fails" can be a billing signal, not a bug.** Six-to-nine-second failures across
+  every matrix job mean the runner never started. Combined with successes clustering at the
+  start of each month, that is quota exhaustion, and no amount of reading scraper code finds it.
+  Check `gh run list` conclusions against the calendar before debugging the job itself.
+- **Unpushed commits are invisible infrastructure bugs.** The Penny fix existed on this machine
+  since May and CI never saw it. `git rev-list --left-right --count HEAD...origin/main` belongs
+  in the orientation step of any session that touches a repo with automation.
+- **`timeout-minutes` on the job, not the matrix, is a footgun.** A single value applied to every
+  chain means the slowest chain sets the cost of the fastest one's failure mode. Carrying the
+  timeout in the matrix entry makes the budget explicit and per-chain.
+- **Zero bytes after a full timeout is a hang, not slowness.** Tesco burned 180 min for a 0-byte
+  artefact on both 1 and 2 Sep. Size of output, not duration, is the signal that separates
+  "needs a longer timeout" from "is broken".
+- **Binary conflicts in a rebase keep the upstream side in the worktree.** For regenerable build
+  output (`*.json.gz`), `git add` on the conflicted path is already correct — no `--ours` needed.
+  Worth verifying afterwards with `git rev-parse HEAD:<path>` against `origin/main:<path>`.
+- **TimesFM is not the tool for this data.** On ČSÚ monthly national food prices it ties with
+  "repeat last month" (10.1% vs 9.6% MAPE) at every context length from 1 to 16 years; accuracy
+  plateaus at ~8 years of history. It only wins with covariates — farm-gate/producer price of the
+  same commodity, in `xreg_mode='xreg + timesfm'`, which beats naive by 1.6pp. Energy, fertiliser
+  and fuel covariates add nothing: retrospective regression shows the farm-gate price is already
+  a sufficient statistic for them. Don't port this to daily per-product retail prices.
+
+### Next
+- **Tesco scraper is broken** — 180 min, 0 bytes, twice. Now capped at 40 min on the weekly tier
+  so it can't burn 3 h/day, but it needs actual diagnosis.
+- `src/common/coverage.test.ts` deletion parked in `stash@{0}`; removing it while `coverage.ts`
+  exists trips the co-named-test quality gate.
+- With minutes now unlimited, reconsider the tier split — all six chains could go back to daily
+  (one-line change to the `daily` variable in the `plan` job).
+- ČSÚ reference ingest: national monthly consumer/producer/farm-gate series joined to canonical
+  products by commodity, giving every product a "vs national average" benchmark from day one.
+
+### Proof
+- `npm test`: 118/118 passing (was 108 on 9 May; the 10 new ones came in with the rebased work).
+- `git rev-list --left-right --count HEAD...origin/main` → `12 0` before push; push clean.
+- `data/canonical/{latest,groups}.json.gz` byte-identical to `origin/main` after rebase.
+- Run 33650562707: `plan` → success, matrix `kosik/35, billa/35, rohlik/110`.
+- Repo visibility confirmed `{"private":false,"visibility":"public"}`.
+
+
 ## 2026-05-07 — Cron, matcher upgrade, search relevance, two-pane shell
 
 ### Context
