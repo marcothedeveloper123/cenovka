@@ -37,6 +37,7 @@ export function Header({ active, cartCount, favCount, initialQuery = '' }: Props
         <nav className="nav">
           <a href="#/h" className={active === '/h' ? 'active' : ''}>Hledat</a>
           <a href="#/t" className={active === '/t' ? 'active' : ''}>Trendy</a>
+          <a href="#/r" className={active === '/r' ? 'active' : ''}>Průměr&nbsp;ČR</a>
           <a href="#/d" className={active === '/d' ? 'active' : ''}>Data</a>
           <a href="#/o" className={active === '/o' ? 'active' : ''}>O&nbsp;projektu</a>
           <a

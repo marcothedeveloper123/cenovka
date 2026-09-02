@@ -48,11 +48,40 @@ export interface MatchGroup {
   productKeys: string[]; // refs into Product.id
 }
 
+
+/** A month of the ČSÚ national reference series (see src/common/csu.ts). */
+export interface MonthlyPrice {
+  month: string; // YYYY-MM
+  price: number;
+}
+
+/** One Czech Statistical Office representative item, national average price. */
+export interface ReferenceItem {
+  code: string;
+  /** As published, e.g. "Máslo [1 kg]". */
+  label: string;
+  /** Label without the bracketed packaging, e.g. "Máslo". */
+  name: string;
+  packaging: string;
+  unit?: Unit;
+  quantity?: number;
+  /** COICOP class, for grouping rows. */
+  coicop: string;
+  history: MonthlyPrice[]; // newest first
+}
+
+export interface ReferenceDataset {
+  generatedAt: string;
+  items: ReferenceItem[];
+}
+
 export interface Dataset {
   generatedAt: string;
   products: Product[];
   groups: MatchGroup[];
   scrapeLog?: ScrapeLog;
+  /** Absent when the reference file hasn't been generated yet. */
+  reference?: ReferenceDataset;
 }
 
 export interface ScrapeDay {

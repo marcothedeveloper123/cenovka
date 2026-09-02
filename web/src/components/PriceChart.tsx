@@ -232,7 +232,9 @@ function niceTicks(min: number, max: number, target: number): number[] {
 }
 
 function fmtShortDate(iso: string): string {
-  // "2026-05-09" → "9.5."
-  const [, m, d] = iso.split('-');
+  // "2026-05-09" → "9.5."  |  "2026-05" → "5/26" (the ČSÚ reference series is
+  // monthly, so it has no day part and Number(undefined) would render NaN).
+  const [y, m, d] = iso.split('-');
+  if (d === undefined) return `${Number(m)}/${y!.slice(2)}`;
   return `${Number(d)}.${Number(m)}.`;
 }

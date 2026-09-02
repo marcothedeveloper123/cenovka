@@ -14,6 +14,7 @@ import { Data } from './pages/Data.tsx';
 import { Favorites } from './pages/Favorites.tsx';
 import { Home } from './pages/Home.tsx';
 import { ProductDetail } from './pages/Product.tsx';
+import { Reference } from './pages/Reference.tsx';
 import { Search } from './pages/Search.tsx';
 import { Trends } from './pages/Trends.tsx';
 
@@ -74,6 +75,8 @@ export function App(): React.ReactElement {
     page = <About dataset={dataset} />;
   } else if (route.path === '/t') {
     page = <Trends dataset={dataset} />;
+  } else if (route.path === '/r') {
+    page = <Reference dataset={dataset} />;
   } else {
     page = (
       <div className="loading">

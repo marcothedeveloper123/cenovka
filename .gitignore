@@ -17,3 +17,4 @@ data/canonical/metrics-*.json
 # Cron commits only the .json.gz siblings (8 MB vs 53 MB).
 data/canonical/latest.json
 data/canonical/groups.json
+data/canonical/reference.json

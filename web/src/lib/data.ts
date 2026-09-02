@@ -1,7 +1,15 @@
 // Loads the canonical scraper output and reshapes it into the UI's flat
 // `Product` + `MatchGroup` schema. One-time fetch on app boot.
 
-import type { Dataset, Product, ScrapeLog, Store, Unit, MatchGroup } from './types.ts';
+import type {
+  Dataset,
+  MatchGroup,
+  Product,
+  ReferenceDataset,
+  ScrapeLog,
+  Store,
+  Unit,
+} from './types.ts';
 
 interface RawCanonicalProduct {
   store: Store;
@@ -48,10 +56,13 @@ const STORE_NAMES: Record<Store, string> = {
 export async function loadDataset(): Promise<Dataset> {
   // Prefer the gzipped sibling (~8 MB vs 53 MB); fall back to plain JSON when
   // it isn't there (e.g., dev with stale data dir, browsers without DCS).
-  const [canonical, groups, scrapeLog] = await Promise.all([
+  const [canonical, groups, scrapeLog, reference] = await Promise.all([
     fetchMaybeGz<RawCanonical>('/data/latest.json'),
     fetchMaybeGz<RawGroup[]>('/data/groups.json').catch(() => [] as RawGroup[]),
     fetchMaybeGz<ScrapeLog>('/data/coverage.json').catch(() => undefined),
+    // ČSÚ national averages. Soft-fails like the others: only latest.json is
+    // allowed to throw, so a deploy without this file still boots.
+    fetchMaybeGz<ReferenceDataset>('/data/reference.json').catch(() => undefined),
   ]);
 
   const groupByKey = new Map<string, string>();
@@ -91,7 +102,7 @@ export async function loadDataset(): Promise<Dataset> {
     };
   });
 
-  return { generatedAt: canonical.generatedAt, products, groups: matchGroups, scrapeLog };
+  return { generatedAt: canonical.generatedAt, products, groups: matchGroups, scrapeLog, reference };
 }
 
 function computeUnitPrice(

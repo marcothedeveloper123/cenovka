@@ -17,6 +17,7 @@
     "assemble": "tsx src/assemble.ts",
     "report": "tsx src/report.ts",
     "match": "tsx src/match.ts",
+    "reference": "tsx src/reference.ts",
     "search": "tsx src/search.ts",
     "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
   },
