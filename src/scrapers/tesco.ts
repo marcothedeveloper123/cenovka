@@ -1,3 +1,4 @@
+import { CircuitBreaker } from '../common/circuit.ts';
 import { fetchText } from '../common/fetch.ts';
 import { readBreadcrumb } from '../common/jsonld.ts';
 import { consoleProgress, mapPool } from '../common/pool.ts';
@@ -9,6 +10,9 @@ import { cleanProduct } from '../common/validate.ts';
 
 const SITEMAP_INDEX = 'https://nakup.itesco.cz/sitemaps/cs-CZ/groceries/products-index.xml';
 const STORE = 'tesco' as const;
+// ~60 s per failed URL / concurrency 3 → trips in about 8 minutes, well inside
+// the CI timeout, while tolerating scattered 404s on a 20k-page crawl.
+const BLOCK_THRESHOLD = 25;
 
 export interface TescoOptions {
   limit?: number;
@@ -24,14 +28,20 @@ export async function scrapeTesco(opts: TescoOptions = {}): Promise<ScrapeResult
 
   const products: Product[] = [];
   const errors: ScrapeResult['errors'] = [];
+  // Every fetch spends ~60 s on the 403 backoff ladder, so a site-wide block
+  // costs 20 s/URL at concurrency 3 — 110 h for Tesco's 20k pages. Trip early
+  // and fail loudly instead of burning the whole CI runner for an empty file.
+  const breaker = new CircuitBreaker(BLOCK_THRESHOLD);
 
   await mapPool(
     urls,
     concurrency,
     async (url) => {
+      if (breaker.tripped) return;
       try {
         const html = await fetchText(url);
         const raw = mapPage(html, url);
+        breaker.success();
         if (!raw) return;
         const { product } = cleanProduct(raw);
         if (product) {
@@ -39,11 +49,20 @@ export async function scrapeTesco(opts: TescoOptions = {}): Promise<ScrapeResult
           products.push(product);
         }
       } catch (err) {
+        breaker.failure();
         errors.push({ url, error: err instanceof Error ? err.message : String(err) });
       }
     },
     { onProgress: consoleProgress(STORE) },
   );
+
+  if (breaker.tripped) {
+    throw new Error(
+      `[${STORE}] circuit breaker tripped: ${breaker.consecutive} consecutive fetch failures ` +
+        `(${breaker.total} total, ${products.length} products salvaged). Last error: ` +
+        `${errors.at(-1)?.error ?? 'unknown'}. Likely a site-wide block — check request headers.`,
+    );
+  }
 
   return { store: STORE, startedAt, finishedAt: new Date().toISOString(), products, errors };
 }

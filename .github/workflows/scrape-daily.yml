@@ -26,7 +26,7 @@ concurrency:
 jobs:
   # Decide which chains run. Per-chain timeouts are observed duration + ~60%
   # headroom, so one stuck chain can no longer burn a 180-minute runner:
-  #   kosik 18m · billa 20m · rohlik 75m · globus 180m(partial) · tesco 180m(0 bytes)
+  #   kosik 18m · billa 20m · rohlik 75m · tesco ~50m · globus 180m(partial)
   plan:
     runs-on: ubuntu-latest
     outputs:
@@ -35,9 +35,8 @@ jobs:
       - id: pick
         shell: bash
         run: |
-          daily='{"chain":"kosik","timeout":35},{"chain":"billa","timeout":35},{"chain":"rohlik","timeout":110}'
-          # Tesco currently returns 0 bytes after 3 h — capped low until fixed.
-          weekly='{"chain":"globus","timeout":150},{"chain":"tesco","timeout":40}'
+          daily='{"chain":"kosik","timeout":35},{"chain":"billa","timeout":35},{"chain":"rohlik","timeout":110},{"chain":"tesco","timeout":90}'
+          weekly='{"chain":"globus","timeout":150}'
           case "${{ github.event_name == 'workflow_dispatch' && inputs.tier || (github.event.schedule == '0 1 * * 0' && 'weekly' || 'daily') }}" in
             daily)  set="$daily" ;;
             weekly) set="$weekly" ;;
