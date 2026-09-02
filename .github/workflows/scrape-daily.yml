@@ -2,9 +2,19 @@ name: scrape-daily
 
 on:
   # 03:00 UTC = 05:00 Europe/Prague (off-peak for CZ retailers).
+  # Two tiers, because Actions minutes are the binding constraint:
+  #   daily  — the chains that finish fast enough to run every day
+  #   weekly — the slow full-catalogue walkers (Globus ~3 h alone)
   schedule:
     - cron: '0 3 * * *'
-  workflow_dispatch: {}
+    - cron: '0 1 * * 0'
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: 'Which chain set to scrape'
+        type: choice
+        options: [daily, weekly, all]
+        default: daily
 
 permissions:
   contents: write
@@ -14,19 +24,34 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # One job per chain in parallel. Fast chains finish in <30 min; Globus
-  # alone walks ~34k product listings and routinely runs ~2 h, so a single
-  # combined job kept hitting the runner's job timeout. Splitting means each
-  # chain gets its own clock.
+  # Decide which chains run. Per-chain timeouts are observed duration + ~60%
+  # headroom, so one stuck chain can no longer burn a 180-minute runner:
+  #   kosik 18m · billa 20m · rohlik 75m · globus 180m(partial) · tesco 180m(0 bytes)
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - id: pick
+        shell: bash
+        run: |
+          daily='{"chain":"kosik","timeout":35},{"chain":"billa","timeout":35},{"chain":"rohlik","timeout":110}'
+          # Tesco currently returns 0 bytes after 3 h — capped low until fixed.
+          weekly='{"chain":"globus","timeout":150},{"chain":"tesco","timeout":40}'
+          case "${{ github.event_name == 'workflow_dispatch' && inputs.tier || (github.event.schedule == '0 1 * * 0' && 'weekly' || 'daily') }}" in
+            daily)  set="$daily" ;;
+            weekly) set="$weekly" ;;
+            all)    set="$daily,$weekly" ;;
+          esac
+          echo "matrix={\"include\":[$set]}" >> "$GITHUB_OUTPUT"
+
   scrape:
+    needs: plan
     strategy:
       fail-fast: false
-      matrix:
-        # Penny dropped: their sitemap.xml exposes only ~26 products and we
-        # haven't found another index. REWE Nuxt scraper still works for Billa.
-        chain: [tesco, rohlik, kosik, billa, globus]
+      matrix: ${{ fromJson(needs.plan.outputs.matrix) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: ${{ matrix.timeout }}
     steps:
       - uses: actions/checkout@v4
 
