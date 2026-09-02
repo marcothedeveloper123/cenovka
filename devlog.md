@@ -54,9 +54,27 @@ the real problem: the daily scrape had not completed a full run since 9 May.
   and fuel covariates add nothing: retrospective regression shows the farm-gate price is already
   a sufficient statistic for them. Don't port this to daily per-product retail prices.
 
+- **Fixed Tesco** (same day, see below).
+
+### Tesco: Client Hints, not IP blocking
+Akamai began 403ing every Tesco *product* page while leaving the sitemaps open, so the scrape
+looked alive — it collected 19,716 URLs, then failed all of them. Each failure spends ~60 s on
+`fetchWithRetry`'s 403 backoff ladder (4+8+16+32), which at concurrency 3 is 20 s/URL, i.e. 110
+hours for the catalogue. The CI log shows exactly that: 250 done at 08:51, 500 at 10:15, killed
+at 10:26. Not a hang and not an IP block — it reproduced from my laptop.
+
+Bisected the headers: the discriminator is the Client Hints trio (`sec-ch-ua`,
+`sec-ch-ua-mobile`, `sec-ch-ua-platform`). Full browser headers *minus* those still 403; the old
+Chrome/124 UA *with* them returns 200. `fetch.ts` now sends a real browser's navigation header
+set by default, and `fetchJson` overrides the Sec-Fetch trio to XHR values so API scrapers don't
+send `Sec-Fetch-Dest: document` on an XHR. Added `src/common/circuit.ts` — a consecutive-failure
+breaker, tripping Tesco at 25 (~8 min) with the last error in the message, so the next site-wide
+block fails loudly instead of silently eating a runner. Tesco back on the daily tier at 90 min.
+
 ### Next
-- **Tesco scraper is broken** — 180 min, 0 bytes, twice. Now capped at 40 min on the weekly tier
-  so it can't burn 3 h/day, but it needs actual diagnosis.
+- Tesco fix is verified locally only (300 products, 0 errors, 44.6 s → ~50 min for the full
+  catalogue). Not yet exercised in CI: the validation run was dispatched before the fix landed.
+  Confirm on the next scheduled run that Tesco produces a non-empty artefact.
 - `src/common/coverage.test.ts` deletion parked in `stash@{0}`; removing it while `coverage.ts`
   exists trips the co-named-test quality gate.
 - With minutes now unlimited, reconsider the tier split — all six chains could go back to daily
@@ -65,7 +83,8 @@ the real problem: the daily scrape had not completed a full run since 9 May.
   products by commodity, giving every product a "vs national average" benchmark from day one.
 
 ### Proof
-- `npm test`: 118/118 passing (was 108 on 9 May; the 10 new ones came in with the rebased work).
+- `npm test`: 122/122 passing (108 on 9 May; +10 from the rebased work, +4 from `circuit.test.ts`).
+- Tesco live: `npx tsx src/scrapers/tesco.ts --limit 300` → 300 products, 0 errors, 44.6 s.
 - `git rev-list --left-right --count HEAD...origin/main` → `12 0` before push; push clean.
 - `data/canonical/{latest,groups}.json.gz` byte-identical to `origin/main` after rebase.
 - Run 33650562707: `plan` → success, matrix `kosik/35, billa/35, rohlik/110`.

@@ -65,3 +65,24 @@ Open-source non-commercial price tracker for CZ grocery chains, modelled on heis
   selections* — find them via `api/katalog/v1/vybery`, then fetch
   `api/dotaz/v1/data/vybery/{vyberKod}?format=JSON_STAT`. The `data.csu.gov.cz/datastat/...` URL
   is the Angular shell, not data.
+
+## Scraping / anti-bot
+- **Client Hints are the discriminator on Akamai sites.** Tesco 403s a bare `User-Agent` +
+  `Accept-Language` on product pages but returns 200 with `sec-ch-ua`, `sec-ch-ua-mobile` and
+  `sec-ch-ua-platform` present. `fetch.ts` sends a full browser navigation header set by default;
+  keep `sec-ch-ua`'s version in step with the Chrome version in `UA`. `fetchJson` overrides the
+  Sec-Fetch trio to XHR values — a request claiming `Sec-Fetch-Dest: document` on an XHR looks
+  like a browser lying about itself.
+- **Sitemaps and product pages are protected separately.** Tesco's sitemaps stayed open the whole
+  time its product pages were blocked, so URL collection succeeded and the crawl looked healthy.
+  Probe an actual content page, not the index, when a scraper goes quiet.
+- **Retry backoff turns a block into a silent burn.** Four retries at a 4 s base is ~60 s per
+  URL; on a 20k-page catalogue at concurrency 3 that is 110 hours of failing. Wrap long crawls in
+  `CircuitBreaker` (`src/common/circuit.ts`) so a systematic block trips in minutes and throws
+  with the last error, rather than producing a zero-byte artefact at the timeout.
+
+## TypeScript under `--experimental-strip-types`
+- **Strip-only mode rejects any TS that needs code generation.** Parameter properties
+  (`constructor(readonly x: number)`), enums, namespaces and decorators all fail at runtime with
+  `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX` even though `tsc` accepts them. Declare the field and assign
+  in the constructor body instead. `tsc --noEmit` will not catch this — the tests will.
