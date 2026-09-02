@@ -11,12 +11,18 @@ const BRAND_ALIASES: Record<string, string> = {
   HIPP: 'Hipp',
 };
 
-export interface ValidationOutcome {
-  product: Product | null;
+export interface ValidationOutcome<T extends Product = Product> {
+  product: T | null;
   warnings: string[];
 }
 
-export function cleanProduct(raw: Product): ValidationOutcome {
+/**
+ * Generic in the product type so a `CanonicalProduct` in gives a
+ * `CanonicalProduct` out. This matches what already happens at runtime — the
+ * returned object spreads `raw`, so extra fields like `priceHistory` are carried
+ * through — and lets `assemble.ts` re-clean prior canonical rows in place.
+ */
+export function cleanProduct<T extends Product>(raw: T): ValidationOutcome<T> {
   const warnings: string[] = [];
   const name = cleanString(raw.name);
   if (!name) {
@@ -47,7 +53,9 @@ export function cleanProduct(raw: Product): ValidationOutcome {
   }
 
   return {
-    product: { ...raw, name, brand, category, categoryCanonical, url, ean },
+    // Cast because TS widens `{ ...raw, name, ... }` to `T & {...}` rather than
+    // `T`; the spread means every field of `T` is present at runtime.
+    product: { ...raw, name, brand, category, categoryCanonical, url, ean } as T,
     warnings,
   };
 }

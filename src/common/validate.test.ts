@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { describe, test } from 'node:test';
-import type { Product } from './types.ts';
+import type { CanonicalProduct, Product } from './types.ts';
 import { cleanProduct, cleanString, normalizeEan } from './validate.ts';
 
 const baseProduct: Product = {
@@ -71,5 +71,22 @@ describe('normalizeEan', () => {
       url: 'https://example.com/p/1?utm_source=foo&icid=bar&keep=me',
     });
     assert.equal(out.product?.url, 'https://example.com/p/1?keep=me');
+  });
+
+  test('carries priceHistory through when re-cleaning a canonical product', () => {
+    // assemble.ts re-cleans prior canonical rows in place on every run. If the
+    // spread ever stopped preserving extra fields, every product's history
+    // would be silently wiped daily.
+    const canonical: CanonicalProduct = {
+      ...baseProduct,
+      brand: 'TESCO',
+      priceHistory: [
+        { date: '2026-09-02', price: 24.9 },
+        { date: '2026-09-01', price: 26.9 },
+      ],
+    };
+    const out = cleanProduct(canonical);
+    assert.deepEqual(out.product?.priceHistory, canonical.priceHistory);
+    assert.equal(out.product?.brand, 'Tesco', 'still applies its normal cleaning');
   });
 });
