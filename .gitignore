@@ -18,3 +18,10 @@ data/canonical/metrics-*.json
 data/canonical/latest.json
 data/canonical/groups.json
 data/canonical/reference.json
+
+# TimesFM benchmark: venv and run outputs. Scripts and inputs are tracked.
+research/timesfm/.venv/
+research/timesfm/*.json
+!research/timesfm/data/*.json
+research/timesfm/__pycache__/
+research/timesfm/.pytest_cache/

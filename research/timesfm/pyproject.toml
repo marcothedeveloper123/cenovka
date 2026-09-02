@@ -1,0 +1,15 @@
+[project]
+name = "timesfm-research"
+version = "0.1.0"
+description = "Benchmark of Google TimesFM against naive baselines on Czech food price series"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=2",
+    "timesfm[torch]>=3.0.1",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "matplotlib>=3.9"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

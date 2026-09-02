@@ -60,6 +60,8 @@ Open-source non-commercial price tracker for CZ grocery chains, modelled on heis
 - **Energy, fuel and fertiliser covariates add nothing.** Retrospective regression on 136 months
   shows the farm-gate price is already a sufficient statistic for the whole upstream chain;
   adding it explains +0.13 adjusted R² while energy and ag-inputs each contribute ≈0.
+- **The benchmark is committed**: `research/timesfm/` has the scripts, the data and a README
+  with every number below. Re-run it rather than re-deriving it from memory.
 - **ČSÚ DataStat API**: `data.csu.gov.cz/api/dotaz/v1/data/sady/{kod}` returns JSON-stat 2.0, but
   serves only one default slice. Historical and alternate-frequency data lives behind *named
   selections* — find them via `api/katalog/v1/vybery`, then fetch
