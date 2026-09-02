@@ -75,15 +75,16 @@ block fails loudly instead of silently eating a runner. Tesco back on the daily 
 - Tesco fix is verified locally only (300 products, 0 errors, 44.6 s → ~50 min for the full
   catalogue). Not yet exercised in CI: the validation run was dispatched before the fix landed.
   Confirm on the next scheduled run that Tesco produces a non-empty artefact.
-- `src/common/coverage.test.ts` deletion parked in `stash@{0}`; removing it while `coverage.ts`
-  exists trips the co-named-test quality gate.
+- ~~`coverage.test.ts` deletion~~ — resolved. It was a stale uncommitted deletion from May, not
+  intentional: `computeCoverage` is still imported by `assemble-core.ts:93` and runs on every
+  assemble. Restored; suite back to 123.
 - With minutes now unlimited, reconsider the tier split — all six chains could go back to daily
   (one-line change to the `daily` variable in the `plan` job).
 - ČSÚ reference ingest: national monthly consumer/producer/farm-gate series joined to canonical
   products by commodity, giving every product a "vs national average" benchmark from day one.
 
 ### Proof
-- `npm test`: 122/122 passing (108 on 9 May; +10 from the rebased work, +4 from `circuit.test.ts`).
+- `npm test`: 123/123 passing (108 on 9 May; +10 from the rebased work, +4 from `circuit.test.ts`).
 - Tesco live: `npx tsx src/scrapers/tesco.ts --limit 300` → 300 products, 0 errors, 44.6 s.
 - `git rev-list --left-right --count HEAD...origin/main` → `12 0` before push; push clean.
 - `data/canonical/{latest,groups}.json.gz` byte-identical to `origin/main` after rebase.
