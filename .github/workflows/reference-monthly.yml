@@ -49,8 +49,12 @@ jobs:
           # writes reference.json.gz.
           for attempt in 1 2 3; do
             if git push; then exit 0; fi
-            echo "push rejected (attempt $attempt) — pulling --rebase and retrying"
-            git pull --rebase --autostash origin main
+            echo "push rejected (attempt $attempt) — replaying onto origin/main"
+            git fetch origin main
+            git reset --soft origin/main
+            git add data/canonical/reference.json.gz
+            git diff --staged --quiet && { echo "nothing left to commit"; exit 0; }
+            git commit -m "data: ČSÚ reference prices ${MONTH} [skip ci]"
           done
           echo "push still failing after retries"
           exit 1

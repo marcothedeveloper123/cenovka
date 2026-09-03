@@ -83,6 +83,21 @@ block fails loudly instead of silently eating a runner. Tesco back on the daily 
 - ČSÚ reference ingest: national monthly consumer/producer/farm-gate series joined to canonical
   products by commodity, giving every product a "vs national average" benchmark from day one.
 
+### Follow-up, same day
+- **Tesco fix confirmed in CI**: run 33652535132, `scrape (tesco, 90)` succeeded in 54 min with a
+  1.38 MB artefact — matching the ~50 min the local 300-product sample predicted. The Client Hints
+  headers work from a GitHub runner's IP, not just from a laptop.
+- **`finalize` push loop was broken and is now fixed.** Two runs the same day both tried to commit
+  `data: daily scrape 2026-09-02`; the second was rejected, and its `git pull --rebase --autostash`
+  hit binary conflicts on `latest.json.gz` / `groups.json.gz` and halted. A rebase can never resolve
+  those. Replaced with `git fetch && git reset --soft origin/main` then re-commit: the files on disk
+  were just assembled from the run's full artefact set, so ours is authoritative by construction and
+  no merge is needed. The same bug was in `reference-monthly.yml`; fixed there too.
+- **Rohlík cap 110 → 140 min.** It was cancelled at 111 min in that run, but it is not a regression:
+  no 403s, no errors, just half the throughput (150 products/min vs 297 an hour earlier). Rohlík
+  throttles when crawled twice in quick succession, which is what a manual dispatch beside the cron
+  causes. Normal daily operation is 67 min.
+
 ### Proof
 - `npm test`: 123/123 passing (108 on 9 May; +10 from the rebased work, +4 from `circuit.test.ts`).
 - Tesco live: `npx tsx src/scrapers/tesco.ts --limit 300` → 300 products, 0 errors, 44.6 s.

@@ -26,7 +26,9 @@ concurrency:
 jobs:
   # Decide which chains run. Per-chain timeouts are observed duration + ~60%
   # headroom, so one stuck chain can no longer burn a 180-minute runner:
-  #   kosik 18m · billa 20m · rohlik 75m · tesco ~50m · globus 180m(partial)
+  #   kosik 18m · billa 20m · rohlik 67m · tesco 54m · globus 180m(partial)
+  # Rohlík gets extra headroom: it throttles to ~half throughput if crawled twice
+  # in quick succession, which is what a manual dispatch beside the cron causes.
   plan:
     runs-on: ubuntu-latest
     outputs:
@@ -35,7 +37,7 @@ jobs:
       - id: pick
         shell: bash
         run: |
-          daily='{"chain":"kosik","timeout":35},{"chain":"billa","timeout":35},{"chain":"rohlik","timeout":110},{"chain":"tesco","timeout":90}'
+          daily='{"chain":"kosik","timeout":35},{"chain":"billa","timeout":35},{"chain":"rohlik","timeout":140},{"chain":"tesco","timeout":90}'
           weekly='{"chain":"globus","timeout":150}'
           case "${{ github.event_name == 'workflow_dispatch' && inputs.tier || (github.event.schedule == '0 1 * * 0' && 'weekly' || 'daily') }}" in
             daily)  set="$daily" ;;
@@ -131,14 +133,21 @@ jobs:
           fi
           DATE=$(date -u +%Y-%m-%d)
           git commit -m "data: daily scrape ${DATE} [skip ci]"
-          # Workflow runs are long; main may have moved while the scrape was
-          # in flight (manual commits, other CI). Rebase the data commit on
-          # top of whatever's there before pushing. Conflicts are unlikely
-          # since only this workflow writes to data/canonical/*.gz.
+          # Workflow runs are long, so main may have moved while the scrape was
+          # in flight. `git pull --rebase` cannot help here: latest.json.gz and
+          # groups.json.gz are binary, so a concurrent data commit conflicts and
+          # the rebase halts — which is exactly how this step failed on
+          # 2026-09-02. Instead, replay our commit onto the new tip without
+          # merging: the files on disk were just assembled from this run's full
+          # artefact set, so ours is the authoritative version by construction.
           for attempt in 1 2 3; do
             if git push; then exit 0; fi
-            echo "push rejected (attempt $attempt) — pulling --rebase and retrying"
-            git pull --rebase --autostash origin main
+            echo "push rejected (attempt $attempt) — replaying onto origin/main"
+            git fetch origin main
+            git reset --soft origin/main
+            git add data/canonical/latest.json.gz data/canonical/groups.json.gz
+            git diff --staged --quiet && { echo "nothing left to commit"; exit 0; }
+            git commit -m "data: daily scrape ${DATE} [skip ci]"
           done
           echo "push still failing after retries"
           exit 1
