@@ -100,3 +100,18 @@ Open-source non-commercial price tracker for CZ grocery chains, modelled on heis
   through `DecompressionStream` throws. `fetchMaybeGz` sniffs the gzip magic bytes (`1f 8b`)
   instead of trusting the header, which browsers report inconsistently. The dev server does not
   set that header, so this class of bug is invisible until you serve a real build.
+
+## ČSÚ product join (`src/common/csu-map.ts`)
+- **It is a browse list, not a price verdict.** Matched products skew BIO/premium; a derived "X %
+  above average" would be wrong. Show the ČSÚ unit price beside the product's own and stop there.
+- **Exact tokens by default, `*` for prefix, and only on the noun that declines.** Czech prefix
+  matching swallows adjectives and instrumentals: `maslo*`→`máslová příchuť`, `sunk*`→`šunkou`
+  (sauce), `hermelin*`→`s hermelínem` (spread). Excludes decline too: `omac*` not `omack*`,
+  `plec*` not `plec`, `steril*` not `steriliz*`.
+- **Brand names are keywords** — every Vodňanské Kuře product contains `kuře`. Positive keywords
+  must be the distinguishing word, never the species.
+- **The band is for parse errors, not quality.** [0.3×, 5×] of the ČSÚ unit price drops "1 g"
+  quantities and baby food; it keeps gourmet potatoes. Widen before narrowing.
+- **Run `npm run csu-audit` before and after every table change.** It prints what each row
+  catches and what the band rejected; three audit→patch rounds took the first table from ham
+  sauce and egg cups to shippable. Unmap rows under ~5 in-band hits rather than widening them.

@@ -1,5 +1,66 @@
 # Devlog
 
+## 2026-09-03 — Products ↔ ČSÚ items, both directions
+
+### Context
+`/r` listed 86 national average prices but nothing linked a scraped product to its ČSÚ item or
+back. Marco's ask: from `Hovězí maso zadní bez kosti [1 kg]`, show every product we scraped that
+belongs there, across all chains — and from a product, get to its national average. This morning's
+"vs national average" *number* was ruled out because matched medians ran 17–79% above ČSÚ; a
+browse *list* tolerates a stray premium item where a percentage would lie, so the join ships as
+a list with two facts side by side and no derived verdict.
+
+### Done
+- **`src/common/csu-map.ts`** — matcher DSL (unit gate, optional category gate, `all`/`any`/`none`
+  keyword lists, unit-price band vs the ČSÚ price) and a 28-row table. Keywords are exact tokens
+  unless suffixed `*` for prefix. The band defaults to [0.3×, 5×] and exists to drop quantity-parse
+  errors (a fillet at 699 900 Kč/kg) and wrong-product hits (baby purée under potatoes), not to
+  filter premium.
+- **`src/csu-join.ts`** → `data/canonical/reference-members.json.gz`, `{ code: ["store::id"…] }`.
+  A sidecar like `groups.json`; `latest.json` untouched. 1,305 products under 28 items today.
+- **`src/csu-audit.ts`** — per item: keyword hits, in-band hits, per-store counts, median/min vs
+  ČSÚ, cheapest three names, what the band rejected. Runs in CI finalize (informational). This is
+  how the table gets extended: read it before and after every change.
+- **Web**: `/r/:code` (`ReferenceItem.tsx`) lists matched products grouped by chain, sorted by
+  unit price, ČSÚ average and per-chain counts in the header; `/r` rows link when mapped and show
+  the count; product page gets a `PRŮMĚR ČR` cell (`CsuCell.tsx`) with the item's unit price next
+  to the product's own, linking to `/r/:code`. All soft-fail when the members file is absent.
+- CI: `csu-join` after `match`, `csu-audit` step, members file staged in both commit paths;
+  `copy-data.mjs` ships it (5.5 KB).
+
+### Learned
+- **Prefix keyword matching is wrong as a default in Czech.** `maslo*` catches `máslová příchuť`
+  (margarine), `sunk*` catches `šunkou` (sauces), `šunková` (pâté) and a cat-food `šunková
+  kapsička`, `hermelin*` catches `pomazánka s hermelínem`. Exact nominative tokens by default,
+  prefix only where declension of the *noun itself* matters (`hovez*`).
+- **Declension breaks excludes too.** `omack*` misses `v rajčatové omáčce`; `plec` misses `steak z
+  plece`; `steriliz*` misses `STERILOVANE`. Stem shorter than you think, and read the audit.
+- **Brand names are keywords.** Every Vodňanské Kuře cut contains `kuře`, so `kure` in the
+  whole-chicken `any` list matched chicken necks. Keep positive keywords to the distinguishing
+  word (`celé`), not the species.
+- **Dish names reuse cut names.** Svíčková is both a fillet and a sauce; `Lokál Svíčková hovězí
+  pečeně` still slips through as a ready dish — acceptable in a list, and the reason a list was
+  the right shape.
+- **A verification script is what makes a curated table maintainable.** Three rounds of audit →
+  patch turned an embarrassing first table (ham sauce, egg cups, popcorn) into a shippable one in
+  minutes; without the audit each of those would have been a user-reported bug.
+
+### Next
+- Extend the table row by row via the audit; 58 ČSÚ items remain unmapped, many legitimately
+  (names don't carry "s kostí / bez kosti").
+- Multipacks (6×0,5 l beer, 4×120 g yoghurt) parse as the single-unit quantity and get band-dropped;
+  `multipackHint` in the matcher exists — the join could use it to scale quantity.
+- Rýže: 142 in-band with median 100 vs ČSÚ 36 — the list is broad. Fine for browsing; would need
+  narrowing before any aggregate is shown.
+
+### Proof
+- `npm test` 155/155 (was 136; +19 across csu-map, csu-join, csu-audit). `tsc --noEmit` clean in
+  both projects. `npm run build` ships `reference-members.json.gz`.
+- `/r/01122101`: 39 products, Tesco 1 · Rohlík 17 · Košík 19 · Billa 2; "Masna Rosovice Hovězí
+  zadní bez kosti" present, "Svíčková omáčka" and "steak z plece" absent. `/r`: 28/86 rows linked.
+  `/p/tesco::220226861` shows the cell linking back. `/r/01146003` (unmapped) shows the empty
+  state. With the members file removed: site boots, rows unlink, cell disappears.
+
 ## 2026-09-02 — Pipeline had been dead since May: Actions minutes, not code
 
 ### Context

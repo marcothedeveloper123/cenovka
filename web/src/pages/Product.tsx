@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { CsuCell } from '../components/CsuCell.tsx';
 import { PriceChart, type Series } from '../components/PriceChart.tsx';
 import { fmtCZK } from '../lib/format.ts';
 import { useCart, useFavorites } from '../lib/storage.ts';
@@ -101,6 +102,7 @@ export function ProductDetail({ dataset, productId }: Props): React.ReactElement
                 </div>
               </div>
             )}
+            <CsuCell product={product} dataset={dataset} />
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
               <button
                 type="button"

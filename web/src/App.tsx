@@ -15,6 +15,7 @@ import { Favorites } from './pages/Favorites.tsx';
 import { Home } from './pages/Home.tsx';
 import { ProductDetail } from './pages/Product.tsx';
 import { Reference } from './pages/Reference.tsx';
+import { ReferenceItem } from './pages/ReferenceItem.tsx';
 import { Search } from './pages/Search.tsx';
 import { Trends } from './pages/Trends.tsx';
 
@@ -77,6 +78,8 @@ export function App(): React.ReactElement {
     page = <Trends dataset={dataset} />;
   } else if (route.path === '/r') {
     page = <Reference dataset={dataset} />;
+  } else if (route.path.startsWith('/r/')) {
+    page = <ReferenceItem dataset={dataset} code={decodeURIComponent(route.path.slice(3))} />;
   } else {
     page = (
       <div className="loading">

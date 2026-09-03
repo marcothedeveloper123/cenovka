@@ -22,6 +22,7 @@ const FILES = [
   { name: 'groups.json.gz', required: false },
   { name: 'coverage.json.gz', required: false },
   { name: 'reference.json.gz', required: false },
+  { name: 'reference-members.json.gz', required: false },
 ];
 
 const MAX_BYTES = 25 * 1024 * 1024; // Cloudflare Pages per-file ceiling

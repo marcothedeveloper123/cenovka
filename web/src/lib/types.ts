@@ -38,6 +38,8 @@ export interface Product {
   history: PricePoint[];
   /** Group id (cross-chain match) when known. */
   groupId?: string;
+  /** ČSÚ reference item this product is listed under, when the join has one. */
+  csu?: string;
 }
 
 export interface MatchGroup {
@@ -82,6 +84,8 @@ export interface Dataset {
   scrapeLog?: ScrapeLog;
   /** Absent when the reference file hasn't been generated yet. */
   reference?: ReferenceDataset;
+  /** ČSÚ code → product ids on shelves under that item. Absent until csu-join has run. */
+  referenceMembers?: Record<string, string[]>;
 }
 
 export interface ScrapeDay {

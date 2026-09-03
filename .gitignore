@@ -18,6 +18,7 @@ data/canonical/metrics-*.json
 data/canonical/latest.json
 data/canonical/groups.json
 data/canonical/reference.json
+data/canonical/reference-members.json
 
 # TimesFM benchmark: venv and run outputs. Scripts and inputs are tracked.
 research/timesfm/.venv/

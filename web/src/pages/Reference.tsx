@@ -174,6 +174,7 @@ export function Reference({ dataset }: Props): React.ReactElement {
                 <th style={{ fontWeight: 400, textAlign: 'right' }}>m/m</th>
                 <th style={{ fontWeight: 400, textAlign: 'right' }}>r/r</th>
                 <th style={{ fontWeight: 400, textAlign: 'right', width: 80 }}>Vývoj</th>
+                <th style={{ fontWeight: 400, textAlign: 'right', width: 90 }}>Produkty</th>
               </tr>
             </thead>
             <tbody>
@@ -184,7 +185,17 @@ export function Reference({ dataset }: Props): React.ReactElement {
                   style={{ borderTop: '1px solid var(--rule)', cursor: 'pointer' }}
                 >
                   <td style={{ padding: '7px 0' }}>
-                    {item.name}{' '}
+                    {(dataset.referenceMembers?.[item.code]?.length ?? 0) > 0 ? (
+                      <a
+                        href={`#/r/${item.code}`}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ borderBottom: '1px solid var(--rule)' }}
+                      >
+                        {item.name}
+                      </a>
+                    ) : (
+                      item.name
+                    )}{' '}
                     <span style={{ color: 'var(--ink-3)' }}>[{item.packaging}]</span>
                   </td>
                   <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
@@ -198,6 +209,9 @@ export function Reference({ dataset }: Props): React.ReactElement {
                   </td>
                   <td style={{ textAlign: 'right' }}>
                     <Spark item={item} />
+                  </td>
+                  <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: 'var(--ink-3)' }}>
+                    {dataset.referenceMembers?.[item.code]?.length ?? '—'}
                   </td>
                 </tr>
               ))}

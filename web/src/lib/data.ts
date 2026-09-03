@@ -6,10 +6,14 @@ import type {
   MatchGroup,
   Product,
   ReferenceDataset,
+  ReferenceItem,
   ScrapeLog,
   Store,
   Unit,
 } from './types.ts';
+
+/** ČSÚ code → product ids, as written by `src/csu-join.ts`. */
+type RawReferenceMembers = Record<string, string[]>;
 
 interface RawCanonicalProduct {
   store: Store;
@@ -56,14 +60,21 @@ const STORE_NAMES: Record<Store, string> = {
 export async function loadDataset(): Promise<Dataset> {
   // Prefer the gzipped sibling (~8 MB vs 53 MB); fall back to plain JSON when
   // it isn't there (e.g., dev with stale data dir, browsers without DCS).
-  const [canonical, groups, scrapeLog, reference] = await Promise.all([
+  const [canonical, groups, scrapeLog, reference, referenceMembers] = await Promise.all([
     fetchMaybeGz<RawCanonical>('/data/latest.json'),
     fetchMaybeGz<RawGroup[]>('/data/groups.json').catch(() => [] as RawGroup[]),
     fetchMaybeGz<ScrapeLog>('/data/coverage.json').catch(() => undefined),
     // ČSÚ national averages. Soft-fails like the others: only latest.json is
     // allowed to throw, so a deploy without this file still boots.
     fetchMaybeGz<ReferenceDataset>('/data/reference.json').catch(() => undefined),
+    fetchMaybeGz<RawReferenceMembers>('/data/reference-members.json').catch(() => undefined),
   ]);
+
+  // Invert ČSÚ code → ids into id → code, the same way groups become groupId.
+  const csuByKey = new Map<string, string>();
+  for (const [code, keys] of Object.entries(referenceMembers ?? {})) {
+    for (const key of keys) csuByKey.set(key, code);
+  }
 
   const groupByKey = new Map<string, string>();
   const matchGroups: MatchGroup[] = groups.map((g) => {
@@ -99,10 +110,29 @@ export async function loadDataset(): Promise<Dataset> {
       url: p.url,
       history: p.priceHistory ?? [],
       groupId: groupByKey.get(id),
+      csu: csuByKey.get(id),
     };
   });
 
-  return { generatedAt: canonical.generatedAt, products, groups: matchGroups, scrapeLog, reference };
+  return {
+    generatedAt: canonical.generatedAt,
+    products,
+    groups: matchGroups,
+    scrapeLog,
+    reference,
+    referenceMembers,
+  };
+}
+
+/**
+ * A ČSÚ item's price in the same unit-price basis as `Product.unitPrice`
+ * (Kč per 100 g / 100 ml / ks), so the two can sit side by side. Uses the
+ * latest month.
+ */
+export function csuUnitPrice(item: ReferenceItem): { unitPrice?: number; unitPriceLabel?: 'ks' | '100g' | '100ml' } {
+  const latest = item.history[0];
+  if (!latest) return {};
+  return computeUnitPrice(latest.price, item.unit, item.quantity);
 }
 
 function computeUnitPrice(

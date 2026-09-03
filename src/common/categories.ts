@@ -90,6 +90,7 @@ function matchesAny(tokens: readonly string[], keywords: readonly string[]): boo
   return false;
 }
 
-function fold(s: string): string {
+/** Lowercase and strip diacritics — the shared normalisation for keyword matching. */
+export function fold(s: string): string {
   return s.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '');
 }
