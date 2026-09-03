@@ -128,18 +128,27 @@ async function fetchJson<T>(url: string): Promise<T> {
 }
 
 async function fetchMaybeGz<T>(url: string): Promise<T> {
-  // Try .gz first when DecompressionStream is available; fall back to plain.
-  if (typeof DecompressionStream !== 'undefined') {
-    try {
-      const res = await fetch(`${url}.gz`, { cache: 'no-store' });
-      if (res.ok && res.body) {
-        const stream = res.body.pipeThrough(new DecompressionStream('gzip'));
-        const text = await new Response(stream).text();
-        return JSON.parse(text) as T;
+  // Prefer the .gz sibling, but don't assume it arrives still compressed.
+  // A static host that sets `Content-Encoding: gzip` on .gz files (vite preview
+  // and Cloudflare Pages both do) makes the browser decode the body for us;
+  // one that treats it as an opaque download does not. Piping already-decoded
+  // JSON through DecompressionStream throws, which is how the first production
+  // build failed while dev worked. Sniff the gzip magic bytes instead of
+  // trusting the header, which browsers report inconsistently.
+  try {
+    const res = await fetch(`${url}.gz`, { cache: 'no-store' });
+    if (res.ok) {
+      const buf = await res.arrayBuffer();
+      const head = new Uint8Array(buf, 0, Math.min(2, buf.byteLength));
+      const isGzip = head[0] === 0x1f && head[1] === 0x8b;
+      if (!isGzip) return JSON.parse(new TextDecoder().decode(buf)) as T;
+      if (typeof DecompressionStream !== 'undefined') {
+        const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream('gzip'));
+        return JSON.parse(await new Response(stream).text()) as T;
       }
-    } catch {
-      // fall through
     }
+  } catch {
+    // fall through to the uncompressed sibling
   }
   return fetchJson<T>(url);
 }

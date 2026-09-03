@@ -45,10 +45,10 @@ export function Data({ dataset }: Props): React.ReactElement {
         </h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
           <DownloadCard
-            title="Aktuální ceny (JSON)"
-            sub={`${stats.total.toLocaleString('cs')} produktů · ${formatBytes(estimateJsonSize(dataset))}`}
-            href="/data/latest.json"
-            filename="cenovka-latest.json"
+            title="Aktuální ceny (JSON, gzip)"
+            sub={`${stats.total.toLocaleString('cs')} produktů · ${formatBytes(estimateJsonSize(dataset))} rozbaleno`}
+            href="/data/latest.json.gz"
+            filename="cenovka-latest.json.gz"
           />
           <DownloadCard
             title="Aktuální ceny (CSV)"
@@ -56,10 +56,10 @@ export function Data({ dataset }: Props): React.ReactElement {
             onDownload={() => downloadBlob('cenovka-latest.csv', 'text/csv;charset=utf-8', toCsv(dataset.products))}
           />
           <DownloadCard
-            title="Páry napříč řetězci (JSON)"
+            title="Páry napříč řetězci (JSON, gzip)"
             sub={`${dataset.groups.length.toLocaleString('cs')} skupin`}
-            href="/data/groups.json"
-            filename="cenovka-groups.json"
+            href="/data/groups.json.gz"
+            filename="cenovka-groups.json.gz"
           />
         </div>
         <p style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 12 }}>

@@ -88,3 +88,15 @@ Open-source non-commercial price tracker for CZ grocery chains, modelled on heis
   (`constructor(readonly x: number)`), enums, namespaces and decorators all fail at runtime with
   `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX` even though `tsc` accepts them. Declare the field and assign
   in the constructor body instead. `tsc --noEmit` will not catch this — the tests will.
+
+## Web build
+- **`web/public/data` is a symlink to `data/canonical` — right for dev, wrong for builds.** Vite
+  follows it and copies the whole directory (53 MB uncompressed `latest.json`, gitignored metrics),
+  producing a 69 MB dist with a file over Cloudflare Pages' 25 MB per-file limit. `publicDir` is
+  therefore disabled for builds and `web/scripts/copy-data.mjs` copies only the four `.gz` files
+  the SPA fetches (~10.5 MB).
+- **Never assume a `.gz` fetch arrives compressed.** Static hosts (vite preview, Cloudflare Pages)
+  set `Content-Encoding: gzip` on `.gz` files, so the browser decodes the body and piping it
+  through `DecompressionStream` throws. `fetchMaybeGz` sniffs the gzip magic bytes (`1f 8b`)
+  instead of trusting the header, which browsers report inconsistently. The dev server does not
+  set that header, so this class of bug is invisible until you serve a real build.
